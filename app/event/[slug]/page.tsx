@@ -15,7 +15,7 @@ export default async function EventPage({ params }: EventPageProps) {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' & ')
 
-  const uploadUrl = `http://localhost:3000/event/${slug}/upload`
+  const uploadUrl = `https://wedding-qr-system.vercel.app/event/${slug}/upload`
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
