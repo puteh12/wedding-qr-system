@@ -9,7 +9,9 @@ export default function UploadPage() {
 
   const [guestName, setGuestName] = useState('')
   const [message, setMessage] = useState('')
+  const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   const eventName = slug
     .split('-')
@@ -17,46 +19,51 @@ export default function UploadPage() {
     .join(' & ')
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const selectedFile = e.target.files?.[0]
+    if (!selectedFile) return
 
-    const reader = new FileReader()
-
-    reader.onloadend = () => {
-      setPreview(reader.result as string)
-    }
-
-    reader.readAsDataURL(file)
+    setFile(selectedFile)
+    setPreview(URL.createObjectURL(selectedFile))
   }
 
-  const handleUpload = () => {
-    if (!guestName || !preview) {
+  const handleUpload = async () => {
+    if (!guestName || !file) {
       alert('Please enter your name and choose a photo')
       return
     }
 
-    const newPhoto = {
-      id: Date.now(),
-      guestName,
-      message,
-      imageUrl: preview,
-      createdAt: new Date().toISOString(),
+    try {
+      setIsUploading(true)
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('slug', slug)
+      formData.append('guestName', guestName)
+      formData.append('message', message)
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        alert(result.error || 'Upload failed')
+        return
+      }
+
+      alert('Photo uploaded successfully!')
+
+      setGuestName('')
+      setMessage('')
+      setFile(null)
+      setPreview(null)
+    } catch (error) {
+      alert('Upload failed')
+    } finally {
+      setIsUploading(false)
     }
-
-    const existingPhotos = JSON.parse(
-      localStorage.getItem(`photos-${slug}`) || '[]'
-    )
-
-    localStorage.setItem(
-      `photos-${slug}`,
-      JSON.stringify([newPhoto, ...existingPhotos])
-    )
-
-    alert('Photo uploaded successfully!')
-
-    setGuestName('')
-    setMessage('')
-    setPreview(null)
   }
 
   return (
@@ -66,9 +73,7 @@ export default function UploadPage() {
           Upload Memories
         </p>
 
-        <h1 className="text-3xl font-bold mb-6 text-center">
-          {eventName}
-        </h1>
+        <h1 className="text-3xl font-bold mb-6 text-center">{eventName}</h1>
 
         <div className="space-y-4">
           <input
@@ -103,9 +108,10 @@ export default function UploadPage() {
 
           <button
             onClick={handleUpload}
-            className="w-full bg-pink-500 text-white py-3 rounded-lg"
+            disabled={isUploading}
+            className="w-full bg-pink-500 text-white py-3 rounded-lg disabled:bg-gray-400"
           >
-            Upload Photo
+            {isUploading ? 'Uploading...' : 'Upload Photo'}
           </button>
         </div>
       </div>

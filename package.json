@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.108.0",
+    "cloudinary": "^2.10.0",
     "next": "16.2.7",
     "prisma": "^7.8.0",
     "qrcode.react": "^4.2.0",

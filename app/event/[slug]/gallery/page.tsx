@@ -1,34 +1,41 @@
-'use client'
+import { supabase } from '@/lib/supabase'
 
-import { useParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+type GalleryPageProps = {
+  params: Promise<{ slug: string }>
+}
 
 type Photo = {
   id: number
-  guestName: string
-  message: string
-  imageUrl: string
-  createdAt: string
+  slug: string
+  guest_name: string | null
+  message: string | null
+  image_url: string
+  created_at: string
 }
 
-export default function GalleryPage() {
-  const params = useParams()
-  const slug = params.slug as string
-
-  const [photos, setPhotos] = useState<Photo[]>([])
+export default async function GalleryPage({ params }: GalleryPageProps) {
+  const { slug } = await params
 
   const eventName = slug
     .split('-')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' & ')
 
-  useEffect(() => {
-    const savedPhotos = JSON.parse(
-      localStorage.getItem(`photos-${slug}`) || '[]'
-    )
+  const { data: photos, error } = await supabase
+    .from('photos')
+    .select('*')
+    .eq('slug', slug)
+    .order('created_at', { ascending: false })
 
-    setPhotos(savedPhotos)
-  }, [slug])
+  if (error) {
+    return (
+      <main className="min-h-screen bg-gray-100 px-6 py-10">
+        <p className="text-center text-red-500">
+          Failed to load gallery: {error.message}
+        </p>
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-gray-100 px-6 py-10">
@@ -37,31 +44,29 @@ export default function GalleryPage() {
           Wedding Gallery
         </p>
 
-        <h1 className="text-4xl font-bold text-center mb-8">
-          {eventName}
-        </h1>
+        <h1 className="text-4xl font-bold text-center mb-8">{eventName}</h1>
 
-        {photos.length === 0 ? (
+        {!photos || photos.length === 0 ? (
           <div className="bg-white rounded-xl p-10 text-center shadow">
-            <p className="text-gray-500">
-              No photos uploaded yet.
-            </p>
+            <p className="text-gray-500">No photos uploaded yet.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {photos.map((photo) => (
+            {(photos as Photo[]).map((photo) => (
               <div
                 key={photo.id}
                 className="bg-white rounded-xl shadow overflow-hidden"
               >
                 <img
-                  src={photo.imageUrl}
-                  alt={photo.guestName}
+                  src={photo.image_url}
+                  alt={photo.guest_name || 'Wedding photo'}
                   className="w-full h-56 object-cover"
                 />
 
                 <div className="p-4">
-                  <h2 className="font-bold">{photo.guestName}</h2>
+                  <h2 className="font-bold">
+                    {photo.guest_name || 'Guest'}
+                  </h2>
 
                   {photo.message && (
                     <p className="text-sm text-gray-600 mt-1">
@@ -70,7 +75,7 @@ export default function GalleryPage() {
                   )}
 
                   <p className="text-xs text-gray-400 mt-3">
-                    {new Date(photo.createdAt).toLocaleString()}
+                    {new Date(photo.created_at).toLocaleString()}
                   </p>
                 </div>
               </div>
