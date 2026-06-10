@@ -19,7 +19,6 @@ export default function UploadPage() {
   const slug = params.slug as string
 
   const [step, setStep] = useState(1)
-
   const [event, setEvent] = useState<WeddingEvent | null>(null)
   const [eventLoading, setEventLoading] = useState(true)
 
@@ -43,7 +42,8 @@ export default function UploadPage() {
 
   const brideName =
     event?.bride_name ||
-    slug.split('-')[0]?.charAt(0).toUpperCase() + slug.split('-')[0]?.slice(1)
+    slug.split('-')[0]?.replace(/\b\w/g, (c) => c.toUpperCase()) ||
+    'Bride'
 
   const groomName =
     event?.groom_name ||
@@ -51,7 +51,8 @@ export default function UploadPage() {
       .split('-')
       .slice(1)
       .join(' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/\b\w/g, (c) => c.toUpperCase()) ||
+    'Groom'
 
   useEffect(() => {
     fetchEvent()
@@ -66,23 +67,45 @@ export default function UploadPage() {
       .eq('slug', slug)
       .single()
 
-    if (!error && data) {
-      setEvent(data as WeddingEvent)
+    if (!error && data) setEvent(data as WeddingEvent)
+    setEventLoading(false)
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (!selectedFile) return
+
+    const isVideo = selectedFile.type.startsWith('video/')
+    const isImage = selectedFile.type.startsWith('image/')
+
+    if (!isImage && !isVideo) {
+      alert('Please choose an image or video file.')
+      return
     }
 
-    setEventLoading(false)
+    if (isVideo && !allowVideo) {
+      alert('Video upload is only available for Premium and VIP packages.')
+      return
+    }
+
+    if (selectedFile.size > 100 * 1024 * 1024) {
+      alert('Maximum file size is 100MB.')
+      return
+    }
+
+    if (preview) URL.revokeObjectURL(preview)
+
+    setFile(selectedFile)
+    setMediaType(isVideo ? 'video' : 'image')
+    setPreview(URL.createObjectURL(selectedFile))
   }
 
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return ''
-
     if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4'
     if (MediaRecorder.isTypeSupported('audio/aac')) return 'audio/aac'
-    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-      return 'audio/webm;codecs=opus'
-    }
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus'
     if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm'
-
     return ''
   }
 
@@ -91,28 +114,6 @@ export default function UploadPage() {
     if (type.includes('aac')) return 'aac'
     if (type.includes('webm')) return 'webm'
     return 'mp4'
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (!selectedFile) return
-
-    const selectedIsVideo = selectedFile.type.startsWith('video/')
-    const selectedIsImage = selectedFile.type.startsWith('image/')
-
-    if (!selectedIsImage && !selectedIsVideo) {
-      alert('Please choose an image or video file.')
-      return
-    }
-
-    if (selectedIsVideo && !allowVideo) {
-      alert('Video upload is only available for Premium and VIP packages.')
-      return
-    }
-
-    setFile(selectedFile)
-    setMediaType(selectedIsVideo ? 'video' : 'image')
-    setPreview(URL.createObjectURL(selectedFile))
   }
 
   const startRecording = async () => {
@@ -129,29 +130,23 @@ export default function UploadPage() {
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mimeType = getSupportedMimeType()
-
-      const mediaRecorder = new MediaRecorder(
-        stream,
-        mimeType ? { mimeType } : undefined
-      )
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
 
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
       }
 
       mediaRecorder.onstop = () => {
         const finalMimeType = mediaRecorder.mimeType || mimeType || 'audio/mp4'
+        const blob = new Blob(audioChunksRef.current, { type: finalMimeType })
 
-        const blob = new Blob(audioChunksRef.current, {
-          type: finalMimeType,
-        })
+        if (audioPreview) URL.revokeObjectURL(audioPreview)
 
         setAudioBlob(blob)
         setAudioPreview(URL.createObjectURL(blob))
-
         stream.getTracks().forEach((track) => track.stop())
       }
 
@@ -168,6 +163,7 @@ export default function UploadPage() {
   }
 
   const removeAudio = () => {
+    if (audioPreview) URL.revokeObjectURL(audioPreview)
     setAudioBlob(null)
     setAudioPreview(null)
   }
@@ -176,33 +172,23 @@ export default function UploadPage() {
     if (!audioBlob || !allowAudio) return null
 
     const extension = getAudioExtension(audioBlob.type)
-    const safeGuestName =
-      guestName.trim().replace(/\s+/g, '-').toLowerCase() || 'guest'
-
+    const safeGuestName = guestName.trim().replace(/\s+/g, '-').toLowerCase() || 'guest'
     const fileName = `${slug}/${Date.now()}-${safeGuestName}.${extension}`
 
-    const { error } = await supabase.storage
-      .from('audio')
-      .upload(fileName, audioBlob, {
-        contentType: audioBlob.type || 'audio/mp4',
-        upsert: false,
-      })
+    const { error } = await supabase.storage.from('audio').upload(fileName, audioBlob, {
+      contentType: audioBlob.type || 'audio/mp4',
+      upsert: false,
+    })
 
     if (error) throw error
 
     const { data } = supabase.storage.from('audio').getPublicUrl(fileName)
-
     return data.publicUrl
   }
 
   const handleUpload = async () => {
-    if (!guestName || !file) {
-      alert('Please enter your name and choose a file')
-      return
-    }
-
-    if (mediaType === 'video' && !allowVideo) {
-      alert('Video upload is only available for Premium and VIP packages.')
+    if (!guestName.trim() || !file) {
+      alert('Please enter your name and choose a file.')
       return
     }
 
@@ -251,18 +237,22 @@ export default function UploadPage() {
 
   if (eventLoading) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#FBF7F2',
-          color: '#7B746F',
-          fontFamily: 'sans-serif',
-        }}
-      >
-        Loading wedding event...
+      <div className="loading-page">
+        <style>{`
+          .loading-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #b9aa98;
+            color: white;
+            font-family: sans-serif;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            font-size: 12px;
+          }
+        `}</style>
+        Loading…
       </div>
     )
   }
@@ -270,551 +260,893 @@ export default function UploadPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
-        * { box-sizing: border-box; }
-
-        input[type="text"]:focus,
-        textarea:focus {
-          outline: none;
-          border-color: rgba(184,150,90,0.45) !important;
-          background: #fff !important;
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
         }
 
-        input,
-        textarea {
-          transition: border-color 0.15s, background 0.15s;
+        html,
+        body {
+          background: #b8aa98;
         }
 
-        .upload-page {
+        .page {
           min-height: 100vh;
-          background: #FBF7F2;
+          min-height: 100dvh;
           display: flex;
           align-items: center;
           justify-content: center;
+          padding: 22px 14px;
           font-family: 'DM Sans', sans-serif;
-          padding: 32px;
+          background:
+            linear-gradient(rgba(70, 58, 48, 0.38), rgba(70, 58, 48, 0.38)),
+            radial-gradient(circle at 15% 82%, rgba(255,255,255,.38), transparent 18%),
+            radial-gradient(circle at 85% 25%, rgba(255,255,255,.28), transparent 20%),
+            linear-gradient(135deg, #8f8372, #d6c8b8 48%, #958777);
+          overflow: hidden;
+          position: relative;
+        }
+
+        .page::before {
+          content: '';
+          position: absolute;
+          inset: -40px;
+          background:
+            radial-gradient(circle at 18% 22%, rgba(54, 76, 48, .35), transparent 18%),
+            radial-gradient(circle at 86% 58%, rgba(54, 76, 48, .28), transparent 20%),
+            radial-gradient(circle at 12% 72%, rgba(255,255,255,.46), transparent 13%),
+            radial-gradient(circle at 90% 35%, rgba(255,255,255,.36), transparent 12%);
+          filter: blur(16px);
+        }
+
+        .phone {
+          width: min(100%, 390px);
+          min-height: 812px;
+          max-height: 900px;
+          border-radius: 44px;
           position: relative;
           overflow: hidden;
+          border: 1px solid rgba(255,255,255,.45);
+          box-shadow:
+            0 30px 90px rgba(47, 37, 29, .28),
+            inset 0 0 0 3px rgba(255,255,255,.34);
+          background:
+            radial-gradient(circle at 20% 8%, rgba(255,255,255,.8), transparent 28%),
+            radial-gradient(circle at 94% 72%, rgba(177, 121, 106, .22), transparent 30%),
+            linear-gradient(145deg, rgba(255,249,243,.92), rgba(225,212,199,.90));
+          backdrop-filter: blur(18px);
+          z-index: 1;
         }
 
-        .upload-bg {
-          position: fixed;
+        .phone.step-one {
+          background:
+            linear-gradient(rgba(47,39,32,.22), rgba(47,39,32,.22)),
+            radial-gradient(circle at 25% 20%, rgba(255,255,255,.36), transparent 18%),
+            radial-gradient(circle at 86% 76%, rgba(255,238,213,.25), transparent 22%),
+            linear-gradient(145deg, rgba(145,134,118,.88), rgba(209,198,184,.86));
+        }
+
+        .phone::before {
+          content: '';
+          position: absolute;
           inset: 0;
+          background:
+            radial-gradient(circle at 20% 82%, rgba(255,255,255,.42), transparent 16%),
+            radial-gradient(circle at 78% 22%, rgba(255,255,255,.24), transparent 14%);
+          filter: blur(8px);
           pointer-events: none;
-          z-index: 0;
-          width: 100%;
-          height: 100%;
         }
 
-        .upload-card {
+        .inner {
           position: relative;
           z-index: 2;
-          background: #fff;
-          border-radius: 6px;
-          width: 100%;
-          max-width: 520px;
-          padding: 56px 48px;
-          box-shadow: 0 18px 40px rgba(28,23,20,0.06), 0 0 0 1px rgba(184,150,90,0.06);
-        }
-
-        .corner-top {
-          position: absolute;
-          top: 12px;
-          left: 12px;
-          width: 20px;
-          height: 20px;
-          border-top: 1px solid #B8965A;
-          border-left: 1px solid #B8965A;
-          opacity: 0.45;
-        }
-
-        .corner-bottom {
-          position: absolute;
-          bottom: 12px;
-          right: 12px;
-          width: 20px;
-          height: 20px;
-          border-bottom: 1px solid #B8965A;
-          border-right: 1px solid #B8965A;
-          opacity: 0.45;
-        }
-
-        .step-count {
-          text-align: center;
-          font-size: 10px;
-          font-weight: 600;
-          letter-spacing: 0.22em;
-          text-transform: uppercase;
-          color: #C8B8B0;
-          margin-bottom: 22px;
-        }
-
-        .hero-title {
-          font-family: 'Cormorant Garamond', serif;
-          font-size: 44px;
-          font-weight: 300;
-          color: #1C1714;
-          text-align: center;
-          line-height: 1.05;
-          margin-bottom: 12px;
-        }
-
-        .hero-title em {
-          color: #C4847A;
-          font-style: italic;
-        }
-
-        .hero-text {
-          color: #7B746F;
-          font-size: 14px;
-          line-height: 1.8;
-          text-align: center;
-          margin-top: 24px;
-        }
-
-        .phone-preview {
-          width: 100%;
-          height: 250px;
-          border-radius: 6px;
-          background: linear-gradient(135deg, #FBF7F2, #EFE4DA);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 24px 0;
-          border: 1px solid rgba(184,150,90,0.12);
-          overflow: hidden;
-        }
-
-        .phone-box {
-          width: 150px;
-          height: 220px;
-          border-radius: 24px;
-          border: 8px solid #1C1714;
-          background: #fff;
-          box-shadow: 0 12px 40px rgba(28,23,20,0.15);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          padding: 16px;
-        }
-
-        .phone-box p {
-          font-family: 'Cormorant Garamond', serif;
-          color: #C4847A;
-          font-size: 20px;
-          line-height: 1.2;
-        }
-
-        .tips {
-          display: grid;
-          gap: 10px;
-          color: #7B746F;
-          font-size: 13px;
-          line-height: 1.5;
-        }
-
-        .header {
-          text-align: center;
-          margin-bottom: 34px;
-        }
-
-        .eyebrow {
-          font-size: 10px;
-          font-weight: 600;
-          letter-spacing: 0.25em;
-          text-transform: uppercase;
-          color: #C8B8B0;
-          margin-bottom: 8px;
-        }
-
-        .name {
-          font-family: 'Cormorant Garamond', serif;
-          font-size: 28px;
-          font-weight: 400;
-          color: #1C1714;
-          line-height: 1.05;
-        }
-
-        .name-alt {
-          font-family: 'Cormorant Garamond', serif;
-          font-size: 20px;
-          font-style: italic;
-          color: #C4847A;
-          margin-top: 6px;
-        }
-
-        .package-pill {
-          margin-top: 14px;
-          display: inline-block;
-          padding: 6px 12px;
-          border-radius: 999px;
-          background: #FBF7F4;
-          border: 1px solid rgba(184,150,90,0.18);
-          color: #B8965A;
-          font-size: 10px;
-          font-weight: 600;
-          letter-spacing: 0.14em;
-        }
-
-        .form-stack {
+          min-height: 812px;
+          padding: 22px 28px 30px;
           display: flex;
           flex-direction: column;
-          gap: 18px;
+        }
+
+        .status {
+          height: 26px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          color: ${step === 1 ? '#fff' : '#73584b'};
+          font-size: 13px;
+          font-weight: 700;
+          margin-bottom: 16px;
+        }
+
+        .status-icons {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+        }
+
+        .signal {
+          display: flex;
+          align-items: flex-end;
+          gap: 2px;
+        }
+
+        .signal span {
+          width: 3px;
+          border-radius: 2px;
+          background: currentColor;
+        }
+
+        .signal span:nth-child(1) { height: 5px; }
+        .signal span:nth-child(2) { height: 7px; }
+        .signal span:nth-child(3) { height: 9px; }
+        .signal span:nth-child(4) { height: 11px; }
+
+        .battery {
+          width: 23px;
+          height: 11px;
+          border: 1.7px solid currentColor;
+          border-radius: 3px;
+          position: relative;
+        }
+
+        .battery::before {
+          content: '';
+          position: absolute;
+          right: -4px;
+          top: 3px;
+          width: 2px;
+          height: 5px;
+          background: currentColor;
+          border-radius: 2px;
+        }
+
+        .battery::after {
+          content: '';
+          position: absolute;
+          inset: 2px;
+          background: currentColor;
+          border-radius: 1px;
+        }
+
+        .wifi {
+          width: 15px;
+          height: 11px;
+          border: 2px solid currentColor;
+          border-left-color: transparent;
+          border-right-color: transparent;
+          border-bottom: 0;
+          border-radius: 14px 14px 0 0;
+        }
+
+        .topbar {
+          height: 38px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 16px;
+        }
+
+        .lang {
+          color: white;
+          font-size: 12px;
+          letter-spacing: .08em;
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .back-circle {
+          width: 36px;
+          height: 36px;
+          border-radius: 999px;
+          border: 0;
+          background: rgba(255,255,255,.68);
+          color: #6d5042;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 8px 22px rgba(70,48,37,.08);
+        }
+
+        .step-no {
+          flex: 1;
+          text-align: center;
+          font-size: 13px;
+          color: #8a7061;
+          letter-spacing: .16em;
+        }
+
+        .progress {
+          width: 72%;
+          margin: 0 auto 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .progress span.line {
+          height: 2px;
+          width: 92px;
+          background: rgba(255,255,255,.65);
+        }
+
+        .progress span.dot {
+          width: 11px;
+          height: 11px;
+          border-radius: 50%;
+          background: rgba(255,255,255,.76);
+        }
+
+        .progress span.dot.active {
+          background: #b56f73;
+        }
+
+        .step1-main {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          color: white;
+          padding-top: 48px;
+        }
+
+        .heart-mark {
+          margin-bottom: 14px;
+        }
+
+        .gallery-label {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: .34em;
+          font-weight: 600;
+          margin-bottom: 28px;
+        }
+
+        .couple-name {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 58px;
+          line-height: .98;
+          font-weight: 400;
+          letter-spacing: -.035em;
+          text-shadow: 0 12px 26px rgba(42,31,26,.13);
+        }
+
+        .amp {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 44px;
+          line-height: .8;
+          font-style: italic;
+          color: #d39a9d;
+        }
+
+        .copy {
+          margin-top: 42px;
+          max-width: 280px;
+          font-size: 15px;
+          line-height: 1.62;
+          text-shadow: 0 10px 18px rgba(42,31,26,.14);
+        }
+
+        .mini-heart {
+          margin-top: 28px;
+          font-size: 23px;
+        }
+
+        .bottom {
+          margin-top: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .btn-main {
+          width: 100%;
+          min-height: 54px;
+          border: 0;
+          border-radius: 13px;
+          background: linear-gradient(135deg, #b9646e, #b47a74);
+          color: white;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: .19em;
+          text-transform: uppercase;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          box-shadow: 0 16px 30px rgba(157,83,88,.24);
+        }
+
+        .btn-main:disabled {
+          opacity: .6;
+          cursor: not-allowed;
+        }
+
+        .btn-back {
+          width: 100%;
+          min-height: 48px;
+          border-radius: 11px;
+          border: 1px solid rgba(133,94,74,.55);
+          background: rgba(255,255,255,.18);
+          color: #8a5f4e;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: .18em;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .title {
+          text-align: center;
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 42px;
+          line-height: .95;
+          font-weight: 400;
+          color: #2c201a;
+          letter-spacing: -.035em;
+        }
+
+        .title em {
+          display: block;
+          font-size: 35px;
+          color: #b56f73;
+          font-style: italic;
+        }
+
+        .small-heart {
+          text-align: center;
+          color: #b56f73;
+          margin: 12px 0 17px;
+        }
+
+        .subtitle {
+          text-align: center;
+          max-width: 286px;
+          margin: 0 auto 24px;
+          color: #4f4039;
+          font-size: 14px;
+          line-height: 1.55;
+        }
+
+        .guide-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 11px;
+          margin-bottom: 26px;
+        }
+
+        .guide-card {
+          min-height: 178px;
+          border-radius: 10px;
+          padding: 15px 8px 17px;
+          color: white;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          text-align: center;
+          overflow: hidden;
+          position: relative;
+          box-shadow: 0 14px 26px rgba(71,49,39,.13);
+          background:
+            linear-gradient(to bottom, rgba(34,27,23,.04), rgba(34,27,23,.76)),
+            radial-gradient(circle at 50% 25%, rgba(255,255,255,.60), transparent 21%),
+            linear-gradient(135deg, #8b7b68, #d6c4ac);
+        }
+
+        .guide-card:nth-child(2) {
+          background:
+            linear-gradient(to bottom, rgba(34,27,23,.04), rgba(34,27,23,.76)),
+            radial-gradient(circle at 40% 18%, rgba(255,216,126,.65), transparent 19%),
+            linear-gradient(135deg, #584a38, #b08b58);
+        }
+
+        .guide-card:nth-child(3) {
+          background:
+            linear-gradient(to bottom, rgba(34,27,23,.04), rgba(34,27,23,.76)),
+            radial-gradient(circle at 55% 22%, rgba(255,255,255,.62), transparent 21%),
+            linear-gradient(135deg, #89735f, #d1b08e);
+        }
+
+        .guide-card:nth-child(4) {
+          background:
+            linear-gradient(to bottom, rgba(34,27,23,.04), rgba(34,27,23,.76)),
+            radial-gradient(circle at 44% 28%, rgba(255,198,104,.50), transparent 22%),
+            linear-gradient(135deg, #5d4638, #a77a4e);
+        }
+
+        .guide-card:nth-child(5) {
+          background:
+            linear-gradient(to bottom, rgba(34,27,23,.04), rgba(34,27,23,.76)),
+            radial-gradient(circle at 50% 24%, rgba(238,180,88,.55), transparent 24%),
+            linear-gradient(135deg, #2d241f, #8b6039);
+        }
+
+        .guide-card:nth-child(6) {
+          background:
+            linear-gradient(to bottom, rgba(34,27,23,.04), rgba(34,27,23,.76)),
+            radial-gradient(circle at 50% 24%, rgba(255,255,255,.55), transparent 21%),
+            linear-gradient(135deg, #a0907c, #d7c6af);
+        }
+
+        .guide-icon {
+          width: 35px;
+          height: 35px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.62);
+          margin: 0 auto 9px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255,255,255,.10);
+        }
+
+        .guide-text {
+          font-size: 13px;
+          line-height: 1.25;
+          font-weight: 500;
+        }
+
+        .field {
+          margin-bottom: 20px;
         }
 
         .label {
           display: block;
+          margin-bottom: 10px;
+          color: #3b2d27;
           font-size: 10px;
-          font-weight: 500;
-          letter-spacing: 0.2em;
+          font-weight: 700;
+          letter-spacing: .13em;
           text-transform: uppercase;
-          color: #B8965A;
-          margin-bottom: 6px;
         }
 
-        .optional {
-          color: #C8B8B0;
-          font-weight: 300;
-          text-transform: none;
-          letter-spacing: 0;
+        .input-wrap {
+          min-height: 46px;
+          border-radius: 8px;
+          border: 1px solid rgba(156,116,95,.24);
+          background: rgba(255,255,255,.60);
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          padding: 0 14px;
         }
 
-        .input,
-        .textarea,
-        .file-input {
+        .text-input {
           width: 100%;
-          border: 1px solid rgba(28,23,20,0.06);
-          background: #FBF7F4;
-          padding: 12px 14px;
-          color: #1C1714;
-          border-radius: 4px;
-        }
-
-        .input,
-        .textarea {
-          font-family: 'Cormorant Garamond', serif;
-          font-size: 16px;
-        }
-
-        .file-input {
+          border: 0;
+          outline: 0;
+          background: transparent;
+          color: #2f211b;
           font-family: 'DM Sans', sans-serif;
           font-size: 13px;
-          color: #6F6A67;
+        }
+
+        .text-input::placeholder,
+        .message-input::placeholder {
+          color: rgba(101,82,72,.45);
+        }
+
+        .upload-box {
+          min-height: 118px;
+          border-radius: 10px;
+          border: 1.5px dashed rgba(169,111,94,.45);
+          background: rgba(255,255,255,.36);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          position: relative;
+          overflow: hidden;
           cursor: pointer;
         }
 
-        .hint {
-          margin-top: 6px;
-          font-size: 11px;
-          color: #B8A8A0;
-          line-height: 1.5;
+        .upload-box input {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          cursor: pointer;
         }
 
-        .preview {
-          width: 100%;
-          height: 220px;
-          object-fit: cover;
-          border-radius: 4px;
-          border: 1px solid rgba(28,23,20,0.04);
-        }
-
-        .video-preview {
-          width: 100%;
-          max-height: 260px;
-          border-radius: 4px;
-          border: 1px solid rgba(28,23,20,0.04);
-          background: #000;
-        }
-
-        .primary-btn,
-        .secondary-btn,
-        .danger-btn {
-          width: 100%;
-          padding: 14px 24px;
-          border-radius: 3px;
-          font-family: 'DM Sans', sans-serif;
+        .upload-title {
           font-size: 12px;
           font-weight: 600;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          cursor: pointer;
+          color: #5e453a;
+          margin-top: 8px;
         }
 
-        .primary-btn {
-          background: #14110F;
-          color: #FFF;
-          border: none;
+        .upload-sub {
+          font-size: 10px;
+          color: rgba(75,58,50,.56);
+          margin-top: 6px;
         }
 
-        .primary-btn:disabled {
-          background: #9B948D;
-          cursor: not-allowed;
+        .preview-img,
+        .preview-video {
+          width: 100%;
+          height: 118px;
+          object-fit: cover;
+          display: block;
         }
 
-        .secondary-btn {
+        .textarea-wrap {
+          min-height: 106px;
+          border-radius: 9px;
+          border: 1px solid rgba(156,116,95,.24);
+          background: rgba(255,255,255,.54);
+          padding: 15px;
+          position: relative;
+        }
+
+        .message-input {
+          width: 100%;
+          height: 70px;
+          border: 0;
+          outline: 0;
+          resize: none;
           background: transparent;
-          color: #7B746F;
-          border: 1px solid rgba(28,23,20,0.06);
+          color: #2f211b;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          line-height: 1.55;
         }
 
-        .danger-btn {
-          background: #C4847A;
-          color: #FFF;
-          border: none;
+        .counter {
+          position: absolute;
+          right: 14px;
+          bottom: 11px;
+          font-size: 11px;
+          color: rgba(83,61,51,.50);
         }
 
-        @media (max-width: 560px) {
-          .upload-page {
-            padding: 18px;
-            align-items: flex-start;
+        .voice-row {
+          min-height: 56px;
+          border-radius: 9px;
+          border: 1px solid rgba(156,116,95,.20);
+          background: rgba(255,255,255,.60);
+          display: flex;
+          align-items: center;
+          gap: 13px;
+          padding: 8px 10px 8px 13px;
+        }
+
+        .voice-btn,
+        .play-btn {
+          width: 38px;
+          height: 38px;
+          border-radius: 999px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .voice-btn {
+          border: 0;
+          background: rgba(178,111,114,.12);
+          color: #9b635e;
+        }
+
+        .play-btn {
+          border: 1px solid #2d201b;
+          background: transparent;
+          color: #2d201b;
+        }
+
+        .voice-title {
+          font-size: 12px;
+          color: #5b443a;
+          font-weight: 500;
+        }
+
+        .voice-sub {
+          font-size: 10px;
+          color: rgba(83,61,51,.52);
+          margin-top: 3px;
+        }
+
+        .voice-text {
+          flex: 1;
+        }
+
+        audio {
+          width: 100%;
+          margin-top: 10px;
+        }
+
+        .rec-dot {
+          width: 8px;
+          height: 8px;
+          background: #b56f73;
+          border-radius: 999px;
+          animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: .25; }
+        }
+
+        @media (max-width: 430px) {
+          .page {
+            padding: 0;
+            align-items: stretch;
           }
 
-          .upload-card {
-            padding: 42px 28px;
+          .phone {
+            width: 100%;
+            min-height: 100vh;
+            min-height: 100dvh;
+            max-height: none;
+            border-radius: 0;
+            border: 0;
+            box-shadow: none;
           }
 
-          .hero-title {
-            font-size: 36px;
+          .inner {
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: 18px 24px 24px;
+          }
+
+          .guide-card {
+            min-height: 155px;
           }
         }
       `}</style>
 
-      <div className="upload-page">
-        <svg
-          className="upload-bg"
-          viewBox="0 0 1440 900"
-          xmlns="http://www.w3.org/2000/svg"
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <g opacity="0.10" fill="none" stroke="#B8965A" strokeWidth="0.8">
-            <path d="M -30 -20 Q 100 80 80 200 Q 60 320 140 400" />
-            <path d="M 30 40 Q 130 100 120 240" />
-            <ellipse cx="85" cy="190" rx="22" ry="10" transform="rotate(-35 85 190)" />
-            <ellipse cx="130" cy="230" rx="18" ry="8" transform="rotate(-55 130 230)" />
-          </g>
-
-          <g
-            opacity="0.08"
-            fill="none"
-            stroke="#C4847A"
-            strokeWidth="0.8"
-            transform="translate(1440,900) rotate(180)"
-          >
-            <path d="M -30 -20 Q 100 80 80 200 Q 60 320 140 400" />
-            <ellipse cx="85" cy="190" rx="22" ry="10" transform="rotate(-35 85 190)" />
-          </g>
-        </svg>
-
-        <div className="upload-card">
-          <div className="corner-top" />
-          <div className="corner-bottom" />
-
-          {step === 1 && (
-            <>
-              <p className="step-count">Step 1 / 3</p>
-
-              <h1 className="hero-title">
-                {brideName}
-                <br />
-                <em>& {groomName}</em>
-              </h1>
-
-              <p className="hero-text">
-                Welcome to our wedding guest gallery. Scan, capture and upload
-                your favourite moments from the celebration.
-              </p>
-
-              <div style={{ marginTop: 34 }}>
-                <button className="primary-btn" onClick={() => setStep(2)}>
-                  Start
-                </button>
+      <main className="page">
+        <section className={`phone ${step === 1 ? 'step-one' : ''}`}>
+          <div className="inner">
+            <div className="status">
+              <span>9:41</span>
+              <div className="status-icons">
+                <span className="signal">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="wifi" />
+                <span className="battery" />
               </div>
-            </>
-          )}
+            </div>
 
-          {step === 2 && (
-            <>
-              <p className="step-count">Step 2 / 3</p>
+            {step === 1 ? (
+              <div className="topbar">
+                <div />
+                <div className="lang">EN⌄</div>
+              </div>
+            ) : (
+              <>
+                <div className="topbar">
+                  <button className="back-circle" type="button" onClick={() => setStep(step - 1)}>
+                    ←
+                  </button>
+                  <div className="step-no">{step} / 3</div>
+                  <div style={{ width: 36 }} />
+                </div>
 
-              <h1 className="hero-title">
-                Capture
-                <br />
-                <em>Memories</em>
-              </h1>
+                <div className="progress">
+                  <span className={`dot ${step >= 1 ? 'active' : ''}`} />
+                  <span className="line" />
+                  <span className={`dot ${step >= 2 ? 'active' : ''}`} />
+                  <span className="line" />
+                  <span className={`dot ${step >= 3 ? 'active' : ''}`} />
+                </div>
+              </>
+            )}
 
-              <div className="phone-preview">
-                <div className="phone-box">
-                  <p>
-                    Your
-                    <br />
-                    Photo
-                    <br />
-                    Moment
-                  </p>
+            {step === 1 && (
+              <div className="step1-main">
+                <div className="heart-mark">
+                  <svg width="42" height="42" viewBox="0 0 48 48" fill="none">
+                    <path
+                      d="M24 39s-15-8.8-15-20.3C9 13.2 12.8 10 17.4 10c2.8 0 5.2 1.4 6.6 3.6C25.4 11.4 27.8 10 30.6 10 35.2 10 39 13.2 39 18.7 39 30.2 24 39 24 39Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
+                  </svg>
+                </div>
+
+                <p className="gallery-label">Wedding Gallery</p>
+
+                <div>
+                  <h1 className="couple-name">{brideName}</h1>
+                  <div className="amp">&</div>
+                  <h1 className="couple-name">{groomName}</h1>
+                </div>
+
+                <div className="copy">
+                  <p>Thank you for being part of our special day.</p>
+                  <br />
+                  <p>Help us capture every beautiful moment by sharing your photos, videos and wishes.</p>
+                </div>
+
+                <div className="mini-heart">♡</div>
+
+                <div className="bottom">
+                  <button className="btn-main" type="button" onClick={() => setStep(2)}>
+                    Start →
+                  </button>
                 </div>
               </div>
+            )}
 
-              <div className="tips">
-                <p>📸 Selfie with the couple</p>
-                <p>💍 Wedding ceremony highlights</p>
-                <p>🎉 Fun candid moments</p>
-                <p>🥂 Reception memories</p>
-                {allowVideo && <p>🎥 Videos and boomerangs are welcome</p>}
-                {allowAudio && <p>🎙️ Leave a voice message for the couple</p>}
-              </div>
+            {step === 2 && (
+              <>
+                <h2 className="title">
+                  Capture
+                  <em>the moments</em>
+                </h2>
 
-              <div style={{ marginTop: 30, display: 'grid', gap: 12 }}>
-                <button className="primary-btn" onClick={() => setStep(3)}>
-                  Continue
-                </button>
+                <div className="small-heart">♡</div>
 
-                <button className="secondary-btn" onClick={() => setStep(1)}>
-                  Back
-                </button>
-              </div>
-            </>
-          )}
+                <p className="subtitle">Here are some ideas for the beautiful memories you can share.</p>
 
-          {step === 3 && (
-            <>
-              <div className="header">
-                <p className="eyebrow">Wedding Gallery</p>
+                <div className="guide-grid">
+                  {[
+                    ['📷', 'Selfie with the couple'],
+                    ['💍', 'Wedding ceremony'],
+                    ['🎉', 'Fun candid moments'],
+                    ['🥂', 'Reception memories'],
+                    ['🎥', 'Videos & boomerangs'],
+                    ['🎙️', 'Voice message for the couple'],
+                  ].map(([icon, text]) => (
+                    <div className="guide-card" key={text}>
+                      <div>
+                        <div className="guide-icon">{icon}</div>
+                        <p className="guide-text">{text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-                <div className="name">{brideName}</div>
-                <div className="name-alt">{groomName}</div>
+                <div className="bottom">
+                  <button className="btn-main" type="button" onClick={() => setStep(3)}>
+                    Continue →
+                  </button>
+                  <button className="btn-back" type="button" onClick={() => setStep(1)}>
+                    Back
+                  </button>
+                </div>
+              </>
+            )}
 
-                <div className="package-pill">{packageType} Package</div>
-              </div>
+            {step === 3 && (
+              <>
+                <h2 className="title">
+                  Share
+                  <em>your memory</em>
+                </h2>
 
-              <div className="form-stack">
-                <div>
+                <div className="small-heart">♡</div>
+
+                <div className="field">
                   <label className="label">Your Name</label>
-
-                  <input
-                    type="text"
-                    placeholder="e.g. Ahmad"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    className="input"
-                  />
+                  <div className="input-wrap">
+                    <span>♙</span>
+                    <input
+                      className="text-input"
+                      type="text"
+                      placeholder="e.g. Ahmad"
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="label">
-                    {allowVideo ? 'Photo / Video' : 'Photo'}
+                <div className="field">
+                  <label className="label">{allowVideo ? 'Photo / Video' : 'Photo'}</label>
+                  <label className="upload-box">
+                    <input
+                      type="file"
+                      accept={allowVideo ? 'image/*,video/*' : 'image/*'}
+                      onChange={handleFileChange}
+                    />
+
+                    {!preview ? (
+                      <div>
+                        <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M12 16V4M7 9l5-5 5 5"
+                            stroke="#9b7060"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M20 15.5a4.5 4.5 0 0 0-4.4-5.5A6 6 0 0 0 4.2 12 4 4 0 0 0 5 20h12.5"
+                            stroke="#9b7060"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <p className="upload-title">Tap to upload</p>
+                        <p className="upload-sub">
+                          {allowVideo ? 'JPG, PNG, MP4 up to 100MB' : 'JPG, PNG up to 100MB'}
+                        </p>
+                      </div>
+                    ) : mediaType === 'image' ? (
+                      <img src={preview} alt="Preview" className="preview-img" />
+                    ) : (
+                      <video src={preview} controls playsInline className="preview-video" />
+                    )}
                   </label>
-
-                  <input
-                    type="file"
-                    accept={allowVideo ? 'image/*,video/*' : 'image/*'}
-                    onChange={handleFileChange}
-                    className="file-input"
-                  />
-
-                  <p className="hint">
-                    {packageType === 'BASIC'
-                      ? 'Basic package supports photo upload only.'
-                      : packageType === 'PREMIUM'
-                        ? 'Premium package supports photo and video upload.'
-                        : 'VIP package supports photo, video and voice message.'}
-                  </p>
                 </div>
 
-                {preview && mediaType === 'image' && (
-                  <img src={preview} alt="Preview" className="preview" />
-                )}
-
-                {preview && mediaType === 'video' && (
-                  <video
-                    src={preview}
-                    controls
-                    playsInline
-                    className="video-preview"
-                  />
-                )}
-
-                <div>
-                  <label className="label">
-                    Message for the couple{' '}
-                    <span className="optional">(optional)</span>
-                  </label>
-
-                  <textarea
-                    placeholder="Wishing you both a lifetime of happiness…"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={3}
-                    className="textarea"
-                  />
+                <div className="field">
+                  <label className="label">Message Optional</label>
+                  <div className="textarea-wrap">
+                    <textarea
+                      className="message-input"
+                      placeholder="Wishing you both a lifetime of happiness..."
+                      value={message}
+                      maxLength={200}
+                      onChange={(e) => setMessage(e.target.value)}
+                    />
+                    <span className="counter">{message.length}/200</span>
+                  </div>
                 </div>
 
                 {allowAudio && (
-                  <div>
-                    <label className="label">
-                      Voice Message{' '}
-                      <span className="optional">(optional)</span>
-                    </label>
+                  <div className="field">
+                    <label className="label">Voice Message Optional</label>
 
-                    {!isRecording ? (
+                    <div className="voice-row">
                       <button
                         type="button"
-                        onClick={startRecording}
-                        className="secondary-btn"
+                        className="voice-btn"
+                        onClick={isRecording ? stopRecording : startRecording}
                       >
-                        🎙️ Record Voice Message
+                        {isRecording ? <span className="rec-dot" /> : '🎙️'}
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={stopRecording}
-                        className="danger-btn"
-                      >
-                        Stop Recording
-                      </button>
-                    )}
 
-                    {audioPreview && (
-                      <div style={{ marginTop: 10 }}>
-                        <audio
-                          controls
-                          src={audioPreview}
-                          style={{ width: '100%' }}
-                        />
-
-                        <button
-                          type="button"
-                          onClick={removeAudio}
-                          className="secondary-btn"
-                          style={{ marginTop: 8 }}
-                        >
-                          Remove Voice Message
-                        </button>
+                      <div className="voice-text">
+                        <p className="voice-title">
+                          {isRecording ? 'Recording...' : audioPreview ? 'Voice recorded' : 'Tap to record'}
+                        </p>
+                        <p className="voice-sub">Max 1 minute</p>
                       </div>
-                    )}
+
+                      <button
+                        type="button"
+                        className="play-btn"
+                        onClick={audioPreview ? removeAudio : startRecording}
+                      >
+                        {audioPreview ? '×' : '▶'}
+                      </button>
+                    </div>
+
+                    {audioPreview && <audio controls src={audioPreview} />}
                   </div>
                 )}
 
-                <button
-                  onClick={handleUpload}
-                  disabled={isUploading || isRecording}
-                  className="primary-btn"
-                >
-                  {isUploading ? 'Uploading…' : 'Upload Memory'}
-                </button>
+                <div className="bottom">
+                  <button
+                    className="btn-main"
+                    type="button"
+                    onClick={handleUpload}
+                    disabled={isUploading || isRecording}
+                  >
+                    ⇧ {isUploading ? 'Uploading…' : 'Upload Memory'}
+                  </button>
 
-                <button
-                  onClick={() => setStep(2)}
-                  className="secondary-btn"
-                >
-                  Back
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+                  <button className="btn-back" type="button" onClick={() => setStep(2)}>
+                    Back
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+      </main>
     </>
   )
 }
