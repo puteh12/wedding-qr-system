@@ -1,50 +1,302 @@
-import Link from 'next/link'
+'use client'
+
+import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import QrCodeBox from './QrCodeBox'
 
-type EventPageProps = {
-  params: Promise<{
-    slug: string
-  }>
-}
-
-export default async function EventPage({ params }: EventPageProps) {
-  const { slug } = await params
-
-  const eventName = slug
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' & ')
+export default function EventPage() {
+  const params = useParams()
+  const router = useRouter()
+  const slug = params?.slug as string
 
   const uploadUrl = `https://wedding-qr-system.vercel.app/event/${slug}/upload`
+  const galleryUrl = `https://wedding-qr-system.vercel.app/event/${slug}/gallery`
+
+  const [qrZoomed, setQrZoomed] = useState<'upload' | 'gallery' | null>(null)
+
+  const brideName = slug
+    ? slug.split('-')[0].charAt(0).toUpperCase() + slug.split('-')[0].slice(1)
+    : ''
+
+  const groomName = slug
+    ? slug.split('-').slice(1).join(' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : ''
+
+  const zoomValue = qrZoomed === 'gallery' ? galleryUrl : uploadUrl
+  const zoomTitle = qrZoomed === 'gallery' ? 'Couple Gallery QR' : 'Guest Upload QR'
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md text-center">
-        <p className="text-sm text-pink-500 font-semibold mb-2">
-          Wedding Event
-        </p>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 
-        <h1 className="text-3xl font-bold mb-4">{eventName}</h1>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        <div className="flex justify-center bg-white p-4 rounded-lg mb-4">
-          <QrCodeBox value={uploadUrl} />
+        .event-page {
+          min-height: 100vh;
+          background-color: #FAF7F2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'DM Sans', sans-serif;
+          position: relative;
+          overflow: hidden;
+          padding: 24px;
+        }
+
+        .event-card {
+          position: relative;
+          z-index: 2;
+          background: #FFFFFF;
+          border-radius: 4px;
+          width: 100%;
+          max-width: 720px;
+          padding: 44px 40px 40px;
+          box-shadow: 0 2px 4px rgba(28,23,20,0.04), 0 12px 40px rgba(28,23,20,0.09), 0 0 0 1px rgba(184,150,90,0.14);
+          text-align: center;
+        }
+
+        .event-eyebrow {
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.25em;
+          text-transform: uppercase;
+          color: #B8965A;
+          margin-bottom: 6px;
+        }
+
+        .event-couple {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: clamp(28px, 6vw, 38px);
+          font-weight: 300;
+          color: #1C1714;
+          line-height: 1.15;
+          letter-spacing: -0.01em;
+        }
+
+        .event-couple em {
+          font-style: italic;
+          color: #C4847A;
+        }
+
+        .event-divider {
+          font-family: 'Cormorant Garamond', serif;
+          font-style: italic;
+          color: #D4A0A0;
+          font-size: 20px;
+          display: block;
+          margin: 2px 0;
+        }
+
+        .qr-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 20px;
+          margin-top: 30px;
+        }
+
+        .qr-card {
+          background: #FDFAF6;
+          border: 1px solid rgba(184,150,90,0.2);
+          border-radius: 4px;
+          padding: 18px;
+        }
+
+        .qr-title {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: #1C1714;
+          margin-bottom: 14px;
+        }
+
+        .qr-frame {
+          padding: 14px;
+          background: #FFFFFF;
+          border: 1px solid rgba(184,150,90,0.2);
+          border-radius: 4px;
+          display: inline-block;
+          cursor: zoom-in;
+          transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .qr-frame:hover {
+          box-shadow: 0 8px 32px rgba(28,23,20,0.12);
+          transform: scale(1.02);
+        }
+
+        .qr-desc {
+          margin-top: 12px;
+          font-size: 12px;
+          color: #8B7B74;
+          line-height: 1.5;
+        }
+
+        .qr-link {
+          margin-top: 12px;
+          display: block;
+          font-size: 10px;
+          color: #9E8078;
+          word-break: break-all;
+          background: #FAF7F2;
+          border: 1px solid #EDE0D6;
+          padding: 8px;
+          border-radius: 3px;
+          text-align: left;
+        }
+
+        .btn-row {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 22px;
+        }
+
+        .btn-primary,
+        .btn-ghost {
+          display: block;
+          width: 100%;
+          padding: 14px 18px;
+          border-radius: 2px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.15em;
+          text-transform: uppercase;
+          cursor: pointer;
+          text-decoration: none;
+        }
+
+        .btn-primary {
+          background: #1C1714;
+          color: #FAF7F2;
+          border: none;
+        }
+
+        .btn-ghost {
+          background: transparent;
+          color: #9E8E86;
+          border: 1px solid #E8DDD6;
+        }
+
+        .qr-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(28,23,20,0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+          cursor: zoom-out;
+          backdrop-filter: blur(4px);
+        }
+
+        .qr-zoom-inner {
+          background: #FFFFFF;
+          padding: 28px;
+          border-radius: 4px;
+          box-shadow: 0 24px 80px rgba(28,23,20,0.25);
+          text-align: center;
+        }
+
+        .qr-zoom-name {
+          font-family: 'Cormorant Garamond', serif;
+          font-style: italic;
+          font-size: 22px;
+          color: #C4847A;
+          margin-bottom: 8px;
+          font-weight: 300;
+        }
+
+        .qr-zoom-type {
+          font-size: 11px;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: #B8965A;
+          margin-bottom: 16px;
+        }
+
+        .qr-zoom-close {
+          margin-top: 16px;
+          font-size: 10px;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: #B8A8A0;
+        }
+
+        @media (max-width: 640px) {
+          .event-card {
+            padding: 34px 22px 28px;
+          }
+
+          .qr-grid,
+          .btn-row {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      {qrZoomed && (
+        <div className="qr-overlay" onClick={() => setQrZoomed(null)}>
+          <div className="qr-zoom-inner" onClick={(e) => e.stopPropagation()}>
+            <p className="qr-zoom-name">{brideName} & {groomName}</p>
+            <p className="qr-zoom-type">{zoomTitle}</p>
+            <QrCodeBox value={zoomValue} />
+            <p className="qr-zoom-close">Tap anywhere to close</p>
+          </div>
         </div>
+      )}
 
-        <p className="text-gray-600 mb-4">
-          Tetamu scan QR ni untuk upload gambar.
-        </p>
+      <div className="event-page">
+        <div className="event-card">
+          <p className="event-eyebrow">Wedding QR System</p>
 
-        <div className="bg-gray-100 rounded-lg p-4 mb-6 text-sm break-all">
-          {uploadUrl}
+          <div className="event-couple">{brideName}</div>
+          <span className="event-divider">&</span>
+          <div className="event-couple">
+            <em>{groomName}</em>
+          </div>
+
+          <div className="qr-grid">
+            <div className="qr-card">
+              <p className="qr-title">Guest Upload QR</p>
+              <div className="qr-frame" onClick={() => setQrZoomed('upload')}>
+                <QrCodeBox value={uploadUrl} />
+              </div>
+              <p className="qr-desc">Tetamu scan QR ni untuk upload gambar.</p>
+              <span className="qr-link">{uploadUrl}</span>
+            </div>
+
+            <div className="qr-card">
+              <p className="qr-title">Couple Gallery QR</p>
+              <div className="qr-frame" onClick={() => setQrZoomed('gallery')}>
+                <QrCodeBox value={galleryUrl} />
+              </div>
+              <p className="qr-desc">Pengantin scan QR ni untuk tengok gallery.</p>
+              <span className="qr-link">{galleryUrl}</span>
+            </div>
+          </div>
+
+          <div className="btn-row">
+            <a href={uploadUrl} className="btn-primary">
+              Open Upload
+            </a>
+
+            <a href={galleryUrl} className="btn-ghost">
+              Open Gallery
+            </a>
+          </div>
+
+          <button
+            className="btn-ghost"
+            style={{ marginTop: '12px' }}
+            onClick={() => router.push('/')}
+          >
+            Back to Home
+          </button>
         </div>
-
-        <Link
-          href={`/event/${slug}/upload`}
-          className="block w-full bg-pink-500 text-white py-3 rounded-lg hover:bg-pink-600"
-        >
-          Open Upload Page
-        </Link>
       </div>
-    </main>
+    </>
   )
 }
