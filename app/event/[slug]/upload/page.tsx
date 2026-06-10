@@ -30,6 +30,26 @@ export default function UploadPage() {
   const brideName = eventName.split(' & ')[0]
   const groomName = eventName.split(' & ')[1]
 
+  const getSupportedMimeType = () => {
+    if (typeof MediaRecorder === 'undefined') return ''
+
+    if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4'
+    if (MediaRecorder.isTypeSupported('audio/aac')) return 'audio/aac'
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      return 'audio/webm;codecs=opus'
+    }
+    if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm'
+
+    return ''
+  }
+
+  const getAudioExtension = (type: string) => {
+    if (type.includes('mp4')) return 'mp4'
+    if (type.includes('aac')) return 'aac'
+    if (type.includes('webm')) return 'webm'
+    return 'mp4'
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
@@ -40,9 +60,19 @@ export default function UploadPage() {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (!navigator.mediaDevices?.getUserMedia) {
+        alert('Voice recording is not supported on this browser.')
+        return
+      }
 
-      const mediaRecorder = new MediaRecorder(stream)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = getSupportedMimeType()
+
+      const mediaRecorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined
+      )
+
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
@@ -51,7 +81,12 @@ export default function UploadPage() {
       }
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const finalMimeType = mediaRecorder.mimeType || mimeType || 'audio/mp4'
+
+        const blob = new Blob(audioChunksRef.current, {
+          type: finalMimeType,
+        })
+
         setAudioBlob(blob)
         setAudioPreview(URL.createObjectURL(blob))
 
@@ -78,12 +113,14 @@ export default function UploadPage() {
   const uploadAudioToSupabase = async () => {
     if (!audioBlob) return null
 
-    const fileName = `${slug}/${Date.now()}-${guestName.replace(/\s+/g, '-')}.webm`
+    const extension = getAudioExtension(audioBlob.type)
+    const safeGuestName = guestName.trim().replace(/\s+/g, '-').toLowerCase()
+    const fileName = `${slug}/${Date.now()}-${safeGuestName}.${extension}`
 
     const { error } = await supabase.storage
       .from('audio')
       .upload(fileName, audioBlob, {
-        contentType: 'audio/webm',
+        contentType: audioBlob.type || 'audio/mp4',
         upsert: false,
       })
 
@@ -162,7 +199,14 @@ export default function UploadPage() {
         }}
       >
         <svg
-          style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, width: '100%', height: '100%' }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 0,
+            width: '100%',
+            height: '100%',
+          }}
           viewBox="0 0 1440 900"
           xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="xMidYMid slice"
@@ -173,7 +217,14 @@ export default function UploadPage() {
             <ellipse cx="85" cy="190" rx="22" ry="10" transform="rotate(-35 85 190)" />
             <ellipse cx="130" cy="230" rx="18" ry="8" transform="rotate(-55 130 230)" />
           </g>
-          <g opacity="0.08" fill="none" stroke="#C4847A" strokeWidth="0.8" transform="translate(1440,900) rotate(180)">
+
+          <g
+            opacity="0.08"
+            fill="none"
+            stroke="#C4847A"
+            strokeWidth="0.8"
+            transform="translate(1440,900) rotate(180)"
+          >
             <path d="M -30 -20 Q 100 80 80 200 Q 60 320 140 400" />
             <ellipse cx="85" cy="190" rx="22" ry="10" transform="rotate(-35 85 190)" />
           </g>
@@ -188,29 +239,91 @@ export default function UploadPage() {
             width: '100%',
             maxWidth: '520px',
             padding: '56px 48px',
-            boxShadow: '0 18px 40px rgba(28,23,20,0.06), 0 0 0 1px rgba(184,150,90,0.06)',
+            boxShadow:
+              '0 18px 40px rgba(28,23,20,0.06), 0 0 0 1px rgba(184,150,90,0.06)',
           }}
         >
-          <div style={{ position: 'absolute', top: 12, left: 12, width: 20, height: 20, borderTop: '1px solid #B8965A', borderLeft: '1px solid #B8965A', opacity: 0.45 }} />
-          <div style={{ position: 'absolute', bottom: 12, right: 12, width: 20, height: 20, borderBottom: '1px solid #B8965A', borderRight: '1px solid #B8965A', opacity: 0.45 }} />
+          <div
+            style={{
+              position: 'absolute',
+              top: 12,
+              left: 12,
+              width: 20,
+              height: 20,
+              borderTop: '1px solid #B8965A',
+              borderLeft: '1px solid #B8965A',
+              opacity: 0.45,
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              right: 12,
+              width: 20,
+              height: 20,
+              borderBottom: '1px solid #B8965A',
+              borderRight: '1px solid #B8965A',
+              opacity: 0.45,
+            }}
+          />
 
           <div style={{ textAlign: 'center', marginBottom: '34px' }}>
-            <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#C8B8B0', marginBottom: '8px' }}>
+            <p
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                letterSpacing: '0.25em',
+                textTransform: 'uppercase',
+                color: '#C8B8B0',
+                marginBottom: '8px',
+              }}
+            >
               Wedding Gallery
             </p>
-            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '28px', fontWeight: 400, color: '#1C1714', lineHeight: 1.05 }}>
+
+            <div
+              style={{
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: '28px',
+                fontWeight: 400,
+                color: '#1C1714',
+                lineHeight: 1.05,
+              }}
+            >
               {brideName}
             </div>
-            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '20px', fontStyle: 'italic', color: '#C4847A', marginTop: '6px' }}>
+
+            <div
+              style={{
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: '20px',
+                fontStyle: 'italic',
+                color: '#C4847A',
+                marginTop: '6px',
+              }}
+            >
               {groomName}
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#B8965A', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#B8965A',
+                  marginBottom: '6px',
+                }}
+              >
                 Your Name
               </label>
+
               <input
                 type="text"
                 placeholder="e.g. Ahmad"
@@ -230,9 +343,20 @@ export default function UploadPage() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#B8965A', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#B8965A',
+                  marginBottom: '6px',
+                }}
+              >
                 Photo
               </label>
+
               <input
                 type="file"
                 accept="image/*"
@@ -266,10 +390,30 @@ export default function UploadPage() {
             )}
 
             <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#B8965A', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#B8965A',
+                  marginBottom: '6px',
+                }}
+              >
                 Message for the couple{' '}
-                <span style={{ color: '#C8B8B0', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                <span
+                  style={{
+                    color: '#C8B8B0',
+                    fontWeight: 300,
+                    textTransform: 'none',
+                    letterSpacing: 0,
+                  }}
+                >
+                  (optional)
+                </span>
               </label>
+
               <textarea
                 placeholder="Wishing you both a lifetime of happiness…"
                 value={message}
@@ -290,8 +434,28 @@ export default function UploadPage() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#B8965A', marginBottom: '6px' }}>
-                Voice Message <span style={{ color: '#C8B8B0', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#B8965A',
+                  marginBottom: '6px',
+                }}
+              >
+                Voice Message{' '}
+                <span
+                  style={{
+                    color: '#C8B8B0',
+                    fontWeight: 300,
+                    textTransform: 'none',
+                    letterSpacing: 0,
+                  }}
+                >
+                  (optional)
+                </span>
               </label>
 
               {!isRecording ? (
@@ -341,6 +505,7 @@ export default function UploadPage() {
               {audioPreview && (
                 <div style={{ marginTop: '10px' }}>
                   <audio controls src={audioPreview} style={{ width: '100%' }} />
+
                   <button
                     type="button"
                     onClick={removeAudio}
