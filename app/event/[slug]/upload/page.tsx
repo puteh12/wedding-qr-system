@@ -349,77 +349,6 @@ export default function UploadPage() {
           flex-direction: column;
         }
 
-        .status {
-          height: 26px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          color: ${step === 1 ? '#fff' : '#73584b'};
-          font-size: 13px;
-          font-weight: 700;
-          margin-bottom: 16px;
-        }
-
-        .status-icons {
-          display: flex;
-          gap: 6px;
-          align-items: center;
-        }
-
-        .signal {
-          display: flex;
-          align-items: flex-end;
-          gap: 2px;
-        }
-
-        .signal span {
-          width: 3px;
-          border-radius: 2px;
-          background: currentColor;
-        }
-
-        .signal span:nth-child(1) { height: 5px; }
-        .signal span:nth-child(2) { height: 7px; }
-        .signal span:nth-child(3) { height: 9px; }
-        .signal span:nth-child(4) { height: 11px; }
-
-        .battery {
-          width: 23px;
-          height: 11px;
-          border: 1.7px solid currentColor;
-          border-radius: 3px;
-          position: relative;
-        }
-
-        .battery::before {
-          content: '';
-          position: absolute;
-          right: -4px;
-          top: 3px;
-          width: 2px;
-          height: 5px;
-          background: currentColor;
-          border-radius: 2px;
-        }
-
-        .battery::after {
-          content: '';
-          position: absolute;
-          inset: 2px;
-          background: currentColor;
-          border-radius: 1px;
-        }
-
-        .wifi {
-          width: 15px;
-          height: 11px;
-          border: 2px solid currentColor;
-          border-left-color: transparent;
-          border-right-color: transparent;
-          border-bottom: 0;
-          border-radius: 14px 14px 0 0;
-        }
-
         .topbar {
           height: 38px;
           display: flex;
@@ -537,6 +466,7 @@ export default function UploadPage() {
         }
 
         .bottom {
+          width: 100%;
           margin-top: auto;
           display: flex;
           flex-direction: column;
@@ -876,27 +806,98 @@ export default function UploadPage() {
         @media (max-width: 430px) {
           .page {
             padding: 0;
+            min-height: 100dvh;
             align-items: stretch;
+            justify-content: stretch;
+            overflow-y: auto;
           }
 
-          .phone {
+          .page::before {
+            display: none;
+          }
+
+          .phone,
+          .phone.step-one {
             width: 100%;
-            min-height: 100vh;
             min-height: 100dvh;
             max-height: none;
             border-radius: 0;
             border: 0;
             box-shadow: none;
+            overflow-y: auto;
           }
 
           .inner {
-            min-height: 100vh;
             min-height: 100dvh;
-            padding: 18px 24px 24px;
+            padding: 18px 20px 24px;
+          }
+
+          .topbar {
+            margin-top: 4px;
+            margin-bottom: 26px;
+          }
+
+          .progress,
+          .step-no {
+            display: none;
+          }
+
+          .step1-main {
+            padding-top: 62px;
+          }
+
+          .couple-name {
+            font-size: 52px;
+          }
+
+          .copy {
+            max-width: 300px;
+            font-size: 14px;
           }
 
           .guide-card {
-            min-height: 155px;
+            min-height: 154px;
+          }
+
+          .guide-grid {
+            gap: 9px;
+          }
+
+          .title {
+            font-size: 39px;
+          }
+
+          .title em {
+            font-size: 32px;
+          }
+        }
+
+        @media (max-width: 370px) {
+          .inner {
+            padding-left: 16px;
+            padding-right: 16px;
+          }
+
+          .couple-name {
+            font-size: 48px;
+          }
+
+          .guide-card {
+            min-height: 142px;
+            padding-left: 5px;
+            padding-right: 5px;
+          }
+
+          .guide-text {
+            font-size: 12px;
+          }
+
+          .title {
+            font-size: 36px;
+          }
+
+          .title em {
+            font-size: 30px;
           }
         }
       `}</style>
@@ -904,19 +905,6 @@ export default function UploadPage() {
       <main className="page">
         <section className={`phone ${step === 1 ? 'step-one' : ''}`}>
           <div className="inner">
-            <div className="status">
-              <span>9:41</span>
-              <div className="status-icons">
-                <span className="signal">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </span>
-                <span className="wifi" />
-                <span className="battery" />
-              </div>
-            </div>
 
             {step === 1 ? (
               <div className="topbar">
