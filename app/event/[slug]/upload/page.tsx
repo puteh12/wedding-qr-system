@@ -1,34 +1,75 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+
+type PackageType = 'BASIC' | 'PREMIUM' | 'VIP'
+
+type WeddingEvent = {
+  id: number
+  slug: string
+  bride_name: string
+  groom_name: string
+  package_type: PackageType
+}
 
 export default function UploadPage() {
   const params = useParams()
   const slug = params.slug as string
 
+  const [event, setEvent] = useState<WeddingEvent | null>(null)
+  const [eventLoading, setEventLoading] = useState(true)
+
   const [guestName, setGuestName] = useState('')
   const [message, setMessage] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [mediaType, setMediaType] = useState<'image' | 'video'>('image')
 
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioPreview, setAudioPreview] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
-
   const [isUploading, setIsUploading] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
 
-  const eventName = slug
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' & ')
+  const packageType = event?.package_type || 'BASIC'
+  const allowVideo = packageType === 'PREMIUM' || packageType === 'VIP'
+  const allowAudio = packageType === 'VIP'
 
-  const brideName = eventName.split(' & ')[0]
-  const groomName = eventName.split(' & ')[1]
+  const brideName =
+    event?.bride_name ||
+    slug.split('-')[0]?.charAt(0).toUpperCase() + slug.split('-')[0]?.slice(1)
+
+  const groomName =
+    event?.groom_name ||
+    slug
+      .split('-')
+      .slice(1)
+      .join(' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+
+  useEffect(() => {
+    fetchEvent()
+  }, [slug])
+
+  async function fetchEvent() {
+    setEventLoading(true)
+
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, slug, bride_name, groom_name, package_type')
+      .eq('slug', slug)
+      .single()
+
+    if (!error && data) {
+      setEvent(data as WeddingEvent)
+    }
+
+    setEventLoading(false)
+  }
 
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return ''
@@ -54,12 +95,31 @@ export default function UploadPage() {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
 
+    const selectedIsVideo = selectedFile.type.startsWith('video/')
+    const selectedIsImage = selectedFile.type.startsWith('image/')
+
+    if (!selectedIsImage && !selectedIsVideo) {
+      alert('Please choose an image or video file.')
+      return
+    }
+
+    if (selectedIsVideo && !allowVideo) {
+      alert('Video upload is only available for Premium and VIP packages.')
+      return
+    }
+
     setFile(selectedFile)
+    setMediaType(selectedIsVideo ? 'video' : 'image')
     setPreview(URL.createObjectURL(selectedFile))
   }
 
   const startRecording = async () => {
     try {
+      if (!allowAudio) {
+        alert('Voice message is only available for VIP package.')
+        return
+      }
+
       if (!navigator.mediaDevices?.getUserMedia) {
         alert('Voice recording is not supported on this browser.')
         return
@@ -111,10 +171,12 @@ export default function UploadPage() {
   }
 
   const uploadAudioToSupabase = async () => {
-    if (!audioBlob) return null
+    if (!audioBlob || !allowAudio) return null
 
     const extension = getAudioExtension(audioBlob.type)
-    const safeGuestName = guestName.trim().replace(/\s+/g, '-').toLowerCase()
+    const safeGuestName =
+      guestName.trim().replace(/\s+/g, '-').toLowerCase() || 'guest'
+
     const fileName = `${slug}/${Date.now()}-${safeGuestName}.${extension}`
 
     const { error } = await supabase.storage
@@ -133,7 +195,12 @@ export default function UploadPage() {
 
   const handleUpload = async () => {
     if (!guestName || !file) {
-      alert('Please enter your name and choose a photo')
+      alert('Please enter your name and choose a file')
+      return
+    }
+
+    if (mediaType === 'video' && !allowVideo) {
+      alert('Video upload is only available for Premium and VIP packages.')
       return
     }
 
@@ -167,6 +234,7 @@ export default function UploadPage() {
       setMessage('')
       setFile(null)
       setPreview(null)
+      setMediaType('image')
       setAudioBlob(null)
       setAudioPreview(null)
     } catch {
@@ -174,6 +242,24 @@ export default function UploadPage() {
     } finally {
       setIsUploading(false)
     }
+  }
+
+  if (eventLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#FBF7F2',
+          color: '#7B746F',
+          fontFamily: 'sans-serif',
+        }}
+      >
+        Loading wedding event...
+      </div>
+    )
   }
 
   return (
@@ -306,6 +392,23 @@ export default function UploadPage() {
             >
               {groomName}
             </div>
+
+            <div
+              style={{
+                marginTop: '14px',
+                display: 'inline-block',
+                padding: '6px 12px',
+                borderRadius: '999px',
+                background: '#FBF7F4',
+                border: '1px solid rgba(184,150,90,0.18)',
+                color: '#B8965A',
+                fontSize: '10px',
+                fontWeight: 600,
+                letterSpacing: '0.14em',
+              }}
+            >
+              {packageType} PACKAGE
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -354,12 +457,12 @@ export default function UploadPage() {
                   marginBottom: '6px',
                 }}
               >
-                Photo
+                {allowVideo ? 'Photo / Video' : 'Photo'}
               </label>
 
               <input
                 type="file"
-                accept="image/*"
+                accept={allowVideo ? 'image/*,video/*' : 'image/*'}
                 onChange={handleFileChange}
                 style={{
                   width: '100%',
@@ -373,9 +476,24 @@ export default function UploadPage() {
                   borderRadius: '4px',
                 }}
               />
+
+              <p
+                style={{
+                  marginTop: '6px',
+                  fontSize: '11px',
+                  color: '#B8A8A0',
+                  lineHeight: 1.5,
+                }}
+              >
+                {packageType === 'BASIC'
+                  ? 'Basic package supports photo upload only.'
+                  : packageType === 'PREMIUM'
+                    ? 'Premium package supports photo and video upload.'
+                    : 'VIP package supports photo, video and voice message.'}
+              </p>
             </div>
 
-            {preview && (
+            {preview && mediaType === 'image' && (
               <img
                 src={preview}
                 alt="Preview"
@@ -385,6 +503,21 @@ export default function UploadPage() {
                   objectFit: 'cover',
                   borderRadius: '4px',
                   border: '1px solid rgba(28,23,20,0.04)',
+                }}
+              />
+            )}
+
+            {preview && mediaType === 'video' && (
+              <video
+                src={preview}
+                controls
+                playsInline
+                style={{
+                  width: '100%',
+                  maxHeight: '260px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(28,23,20,0.04)',
+                  background: '#000',
                 }}
               />
             )}
@@ -433,102 +566,108 @@ export default function UploadPage() {
               />
             </div>
 
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '10px',
-                  fontWeight: 500,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                  color: '#B8965A',
-                  marginBottom: '6px',
-                }}
-              >
-                Voice Message{' '}
-                <span
+            {allowAudio && (
+              <div>
+                <label
                   style={{
-                    color: '#C8B8B0',
-                    fontWeight: 300,
-                    textTransform: 'none',
-                    letterSpacing: 0,
-                  }}
-                >
-                  (optional)
-                </span>
-              </label>
-
-              {!isRecording ? (
-                <button
-                  type="button"
-                  onClick={startRecording}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: '#FBF7F4',
-                    color: '#7B746F',
-                    border: '1px solid rgba(184,150,90,0.22)',
-                    borderRadius: '4px',
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    letterSpacing: '0.12em',
+                    display: 'block',
+                    fontSize: '10px',
+                    fontWeight: 500,
+                    letterSpacing: '0.2em',
                     textTransform: 'uppercase',
-                    cursor: 'pointer',
+                    color: '#B8965A',
+                    marginBottom: '6px',
                   }}
                 >
-                  🎙️ Record Voice Message
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={stopRecording}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: '#C4847A',
-                    color: '#FFF',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Stop Recording
-                </button>
-              )}
-
-              {audioPreview && (
-                <div style={{ marginTop: '10px' }}>
-                  <audio controls src={audioPreview} style={{ width: '100%' }} />
-
-                  <button
-                    type="button"
-                    onClick={removeAudio}
+                  Voice Message{' '}
+                  <span
                     style={{
-                      marginTop: '8px',
-                      width: '100%',
-                      padding: '10px 14px',
-                      background: 'transparent',
-                      color: '#9E8E86',
-                      border: '1px solid rgba(28,23,20,0.06)',
-                      borderRadius: '4px',
-                      fontFamily: "'DM Sans', sans-serif",
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
+                      color: '#C8B8B0',
+                      fontWeight: 300,
+                      textTransform: 'none',
+                      letterSpacing: 0,
                     }}
                   >
-                    Remove Voice Message
+                    (optional)
+                  </span>
+                </label>
+
+                {!isRecording ? (
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      background: '#FBF7F4',
+                      color: '#7B746F',
+                      border: '1px solid rgba(184,150,90,0.22)',
+                      borderRadius: '4px',
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🎙️ Record Voice Message
                   </button>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      background: '#C4847A',
+                      color: '#FFF',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Stop Recording
+                  </button>
+                )}
+
+                {audioPreview && (
+                  <div style={{ marginTop: '10px' }}>
+                    <audio
+                      controls
+                      src={audioPreview}
+                      style={{ width: '100%' }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={removeAudio}
+                      style={{
+                        marginTop: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'transparent',
+                        color: '#9E8E86',
+                        border: '1px solid rgba(28,23,20,0.06)',
+                        borderRadius: '4px',
+                        fontFamily: "'DM Sans', sans-serif",
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Remove Voice Message
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               onClick={handleUpload}

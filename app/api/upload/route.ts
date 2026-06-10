@@ -19,27 +19,34 @@ export async function POST(request: Request) {
     const audioUrl = formData.get('audioUrl') as string | null
 
     if (!file || !slug) {
-      return NextResponse.json(
-        { error: 'Missing file or slug' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing file or slug' }, { status: 400 })
     }
 
     if (!guestName) {
-      return NextResponse.json(
-        { error: 'Missing guest name' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing guest name' }, { status: 400 })
     }
 
-    if (
-      !process.env.CLOUDINARY_CLOUD_NAME ||
-      !process.env.CLOUDINARY_API_KEY ||
-      !process.env.CLOUDINARY_API_SECRET
-    ) {
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id, package_type')
+      .eq('slug', slug)
+      .single()
+
+    if (eventError || !event) {
+      return NextResponse.json({ error: 'Wedding event not found' }, { status: 404 })
+    }
+
+    const isImage = file.type.startsWith('image/')
+    const isVideo = file.type.startsWith('video/')
+
+    if (!isImage && !isVideo) {
+      return NextResponse.json({ error: 'Only image or video allowed' }, { status: 400 })
+    }
+
+    if (event.package_type === 'BASIC' && isVideo) {
       return NextResponse.json(
-        { error: 'Missing Cloudinary environment variables' },
-        { status: 500 }
+        { error: 'Video upload is only available for Premium and VIP packages' },
+        { status: 403 }
       )
     }
 
@@ -51,7 +58,7 @@ export async function POST(request: Request) {
         .upload_stream(
           {
             folder: `wedding-qr/${slug}`,
-            resource_type: 'image',
+            resource_type: isVideo ? 'video' : 'image',
           },
           (error, result) => {
             if (error) reject(error)
@@ -61,31 +68,28 @@ export async function POST(request: Request) {
         .end(buffer)
     })
 
-    if (!uploadResult?.secure_url) {
-      return NextResponse.json(
-        { error: 'Cloudinary upload failed' },
-        { status: 500 }
-      )
-    }
+    const mediaType = isVideo ? 'video' : 'image'
 
     const { error: supabaseError } = await supabase.from('photos').insert({
+      event_id: event.id,
       slug,
       guest_name: guestName,
       message: message || null,
-      image_url: uploadResult.secure_url,
+      media_type: mediaType,
+      image_url: isImage ? uploadResult.secure_url : null,
+      video_url: isVideo ? uploadResult.secure_url : null,
       audio_url: audioUrl || null,
     })
 
     if (supabaseError) {
-      return NextResponse.json(
-        { error: supabaseError.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: supabaseError.message }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
-      imageUrl: uploadResult.secure_url,
+      mediaType,
+      imageUrl: isImage ? uploadResult.secure_url : null,
+      videoUrl: isVideo ? uploadResult.secure_url : null,
       audioUrl: audioUrl || null,
     })
   } catch (error) {
@@ -94,9 +98,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : 'Upload failed from server',
+          error instanceof Error ? error.message : 'Upload failed from server',
       },
       { status: 500 }
     )
