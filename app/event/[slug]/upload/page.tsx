@@ -18,6 +18,8 @@ export default function UploadPage() {
   const params = useParams()
   const slug = params.slug as string
 
+  const [step, setStep] = useState(1)
+
   const [event, setEvent] = useState<WeddingEvent | null>(null)
   const [eventLoading, setEventLoading] = useState(true)
 
@@ -214,6 +216,8 @@ export default function UploadPage() {
       formData.append('slug', slug)
       formData.append('guestName', guestName)
       formData.append('message', message)
+      formData.append('mediaType', mediaType)
+
       if (audioUrl) formData.append('audioUrl', audioUrl)
 
       const response = await fetch('/api/upload', {
@@ -237,6 +241,7 @@ export default function UploadPage() {
       setMediaType('image')
       setAudioBlob(null)
       setAudioPreview(null)
+      setStep(1)
     } catch {
       alert('Upload failed')
     } finally {
@@ -266,33 +271,319 @@ export default function UploadPage() {
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+
         * { box-sizing: border-box; }
-        input[type="text"]:focus, textarea:focus { outline: none; }
-        input, textarea { transition: border-color 0.15s, background 0.15s; }
+
+        input[type="text"]:focus,
+        textarea:focus {
+          outline: none;
+          border-color: rgba(184,150,90,0.45) !important;
+          background: #fff !important;
+        }
+
+        input,
+        textarea {
+          transition: border-color 0.15s, background 0.15s;
+        }
+
+        .upload-page {
+          min-height: 100vh;
+          background: #FBF7F2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'DM Sans', sans-serif;
+          padding: 32px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .upload-bg {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+          width: 100%;
+          height: 100%;
+        }
+
+        .upload-card {
+          position: relative;
+          z-index: 2;
+          background: #fff;
+          border-radius: 6px;
+          width: 100%;
+          max-width: 520px;
+          padding: 56px 48px;
+          box-shadow: 0 18px 40px rgba(28,23,20,0.06), 0 0 0 1px rgba(184,150,90,0.06);
+        }
+
+        .corner-top {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          width: 20px;
+          height: 20px;
+          border-top: 1px solid #B8965A;
+          border-left: 1px solid #B8965A;
+          opacity: 0.45;
+        }
+
+        .corner-bottom {
+          position: absolute;
+          bottom: 12px;
+          right: 12px;
+          width: 20px;
+          height: 20px;
+          border-bottom: 1px solid #B8965A;
+          border-right: 1px solid #B8965A;
+          opacity: 0.45;
+        }
+
+        .step-count {
+          text-align: center;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          color: #C8B8B0;
+          margin-bottom: 22px;
+        }
+
+        .hero-title {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 44px;
+          font-weight: 300;
+          color: #1C1714;
+          text-align: center;
+          line-height: 1.05;
+          margin-bottom: 12px;
+        }
+
+        .hero-title em {
+          color: #C4847A;
+          font-style: italic;
+        }
+
+        .hero-text {
+          color: #7B746F;
+          font-size: 14px;
+          line-height: 1.8;
+          text-align: center;
+          margin-top: 24px;
+        }
+
+        .phone-preview {
+          width: 100%;
+          height: 250px;
+          border-radius: 6px;
+          background: linear-gradient(135deg, #FBF7F2, #EFE4DA);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 24px 0;
+          border: 1px solid rgba(184,150,90,0.12);
+          overflow: hidden;
+        }
+
+        .phone-box {
+          width: 150px;
+          height: 220px;
+          border-radius: 24px;
+          border: 8px solid #1C1714;
+          background: #fff;
+          box-shadow: 0 12px 40px rgba(28,23,20,0.15);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 16px;
+        }
+
+        .phone-box p {
+          font-family: 'Cormorant Garamond', serif;
+          color: #C4847A;
+          font-size: 20px;
+          line-height: 1.2;
+        }
+
+        .tips {
+          display: grid;
+          gap: 10px;
+          color: #7B746F;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        .header {
+          text-align: center;
+          margin-bottom: 34px;
+        }
+
+        .eyebrow {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.25em;
+          text-transform: uppercase;
+          color: #C8B8B0;
+          margin-bottom: 8px;
+        }
+
+        .name {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 28px;
+          font-weight: 400;
+          color: #1C1714;
+          line-height: 1.05;
+        }
+
+        .name-alt {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 20px;
+          font-style: italic;
+          color: #C4847A;
+          margin-top: 6px;
+        }
+
+        .package-pill {
+          margin-top: 14px;
+          display: inline-block;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: #FBF7F4;
+          border: 1px solid rgba(184,150,90,0.18);
+          color: #B8965A;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.14em;
+        }
+
+        .form-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        .label {
+          display: block;
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+          color: #B8965A;
+          margin-bottom: 6px;
+        }
+
+        .optional {
+          color: #C8B8B0;
+          font-weight: 300;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+
+        .input,
+        .textarea,
+        .file-input {
+          width: 100%;
+          border: 1px solid rgba(28,23,20,0.06);
+          background: #FBF7F4;
+          padding: 12px 14px;
+          color: #1C1714;
+          border-radius: 4px;
+        }
+
+        .input,
+        .textarea {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 16px;
+        }
+
+        .file-input {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          color: #6F6A67;
+          cursor: pointer;
+        }
+
+        .hint {
+          margin-top: 6px;
+          font-size: 11px;
+          color: #B8A8A0;
+          line-height: 1.5;
+        }
+
+        .preview {
+          width: 100%;
+          height: 220px;
+          object-fit: cover;
+          border-radius: 4px;
+          border: 1px solid rgba(28,23,20,0.04);
+        }
+
+        .video-preview {
+          width: 100%;
+          max-height: 260px;
+          border-radius: 4px;
+          border: 1px solid rgba(28,23,20,0.04);
+          background: #000;
+        }
+
+        .primary-btn,
+        .secondary-btn,
+        .danger-btn {
+          width: 100%;
+          padding: 14px 24px;
+          border-radius: 3px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .primary-btn {
+          background: #14110F;
+          color: #FFF;
+          border: none;
+        }
+
+        .primary-btn:disabled {
+          background: #9B948D;
+          cursor: not-allowed;
+        }
+
+        .secondary-btn {
+          background: transparent;
+          color: #7B746F;
+          border: 1px solid rgba(28,23,20,0.06);
+        }
+
+        .danger-btn {
+          background: #C4847A;
+          color: #FFF;
+          border: none;
+        }
+
+        @media (max-width: 560px) {
+          .upload-page {
+            padding: 18px;
+            align-items: flex-start;
+          }
+
+          .upload-card {
+            padding: 42px 28px;
+          }
+
+          .hero-title {
+            font-size: 36px;
+          }
+        }
       `}</style>
 
-      <div
-        style={{
-          minHeight: '100vh',
-          background: '#FBF7F2',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: "'DM Sans', sans-serif",
-          padding: '32px',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
+      <div className="upload-page">
         <svg
-          style={{
-            position: 'fixed',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 0,
-            width: '100%',
-            height: '100%',
-          }}
+          className="upload-bg"
           viewBox="0 0 1440 900"
           xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="xMidYMid slice"
@@ -316,400 +607,212 @@ export default function UploadPage() {
           </g>
         </svg>
 
-        <div
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            background: '#fff',
-            borderRadius: '6px',
-            width: '100%',
-            maxWidth: '520px',
-            padding: '56px 48px',
-            boxShadow:
-              '0 18px 40px rgba(28,23,20,0.06), 0 0 0 1px rgba(184,150,90,0.06)',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: 12,
-              left: 12,
-              width: 20,
-              height: 20,
-              borderTop: '1px solid #B8965A',
-              borderLeft: '1px solid #B8965A',
-              opacity: 0.45,
-            }}
-          />
+        <div className="upload-card">
+          <div className="corner-top" />
+          <div className="corner-bottom" />
 
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 12,
-              right: 12,
-              width: 20,
-              height: 20,
-              borderBottom: '1px solid #B8965A',
-              borderRight: '1px solid #B8965A',
-              opacity: 0.45,
-            }}
-          />
+          {step === 1 && (
+            <>
+              <p className="step-count">Step 1 / 3</p>
 
-          <div style={{ textAlign: 'center', marginBottom: '34px' }}>
-            <p
-              style={{
-                fontSize: '10px',
-                fontWeight: 600,
-                letterSpacing: '0.25em',
-                textTransform: 'uppercase',
-                color: '#C8B8B0',
-                marginBottom: '8px',
-              }}
-            >
-              Wedding Gallery
-            </p>
+              <h1 className="hero-title">
+                {brideName}
+                <br />
+                <em>& {groomName}</em>
+              </h1>
 
-            <div
-              style={{
-                fontFamily: "'Cormorant Garamond', serif",
-                fontSize: '28px',
-                fontWeight: 400,
-                color: '#1C1714',
-                lineHeight: 1.05,
-              }}
-            >
-              {brideName}
-            </div>
-
-            <div
-              style={{
-                fontFamily: "'Cormorant Garamond', serif",
-                fontSize: '20px',
-                fontStyle: 'italic',
-                color: '#C4847A',
-                marginTop: '6px',
-              }}
-            >
-              {groomName}
-            </div>
-
-            <div
-              style={{
-                marginTop: '14px',
-                display: 'inline-block',
-                padding: '6px 12px',
-                borderRadius: '999px',
-                background: '#FBF7F4',
-                border: '1px solid rgba(184,150,90,0.18)',
-                color: '#B8965A',
-                fontSize: '10px',
-                fontWeight: 600,
-                letterSpacing: '0.14em',
-              }}
-            >
-              {packageType} PACKAGE
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '10px',
-                  fontWeight: 500,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                  color: '#B8965A',
-                  marginBottom: '6px',
-                }}
-              >
-                Your Name
-              </label>
-
-              <input
-                type="text"
-                placeholder="e.g. Ahmad"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                style={{
-                  width: '100%',
-                  border: '1px solid rgba(28,23,20,0.06)',
-                  background: '#FBF8F6',
-                  padding: '12px 14px',
-                  fontFamily: "'Cormorant Garamond', serif",
-                  fontSize: '16px',
-                  color: '#1C1714',
-                  borderRadius: '4px',
-                }}
-              />
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '10px',
-                  fontWeight: 500,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                  color: '#B8965A',
-                  marginBottom: '6px',
-                }}
-              >
-                {allowVideo ? 'Photo / Video' : 'Photo'}
-              </label>
-
-              <input
-                type="file"
-                accept={allowVideo ? 'image/*,video/*' : 'image/*'}
-                onChange={handleFileChange}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontSize: '13px',
-                  color: '#6F6A67',
-                  border: '1px solid rgba(28,23,20,0.06)',
-                  background: '#FBF7F4',
-                  cursor: 'pointer',
-                  borderRadius: '4px',
-                }}
-              />
-
-              <p
-                style={{
-                  marginTop: '6px',
-                  fontSize: '11px',
-                  color: '#B8A8A0',
-                  lineHeight: 1.5,
-                }}
-              >
-                {packageType === 'BASIC'
-                  ? 'Basic package supports photo upload only.'
-                  : packageType === 'PREMIUM'
-                    ? 'Premium package supports photo and video upload.'
-                    : 'VIP package supports photo, video and voice message.'}
+              <p className="hero-text">
+                Welcome to our wedding guest gallery. Scan, capture and upload
+                your favourite moments from the celebration.
               </p>
-            </div>
 
-            {preview && mediaType === 'image' && (
-              <img
-                src={preview}
-                alt="Preview"
-                style={{
-                  width: '100%',
-                  height: '220px',
-                  objectFit: 'cover',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(28,23,20,0.04)',
-                }}
-              />
-            )}
+              <div style={{ marginTop: 34 }}>
+                <button className="primary-btn" onClick={() => setStep(2)}>
+                  Start
+                </button>
+              </div>
+            </>
+          )}
 
-            {preview && mediaType === 'video' && (
-              <video
-                src={preview}
-                controls
-                playsInline
-                style={{
-                  width: '100%',
-                  maxHeight: '260px',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(28,23,20,0.04)',
-                  background: '#000',
-                }}
-              />
-            )}
+          {step === 2 && (
+            <>
+              <p className="step-count">Step 2 / 3</p>
 
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '10px',
-                  fontWeight: 500,
-                  letterSpacing: '0.2em',
-                  textTransform: 'uppercase',
-                  color: '#B8965A',
-                  marginBottom: '6px',
-                }}
-              >
-                Message for the couple{' '}
-                <span
-                  style={{
-                    color: '#C8B8B0',
-                    fontWeight: 300,
-                    textTransform: 'none',
-                    letterSpacing: 0,
-                  }}
-                >
-                  (optional)
-                </span>
-              </label>
+              <h1 className="hero-title">
+                Capture
+                <br />
+                <em>Memories</em>
+              </h1>
 
-              <textarea
-                placeholder="Wishing you both a lifetime of happiness…"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={3}
-                style={{
-                  width: '100%',
-                  border: '1px solid rgba(28,23,20,0.06)',
-                  background: '#FBF7F4',
-                  padding: '12px 14px',
-                  fontFamily: "'Cormorant Garamond', serif",
-                  fontSize: '16px',
-                  color: '#1C1714',
-                  resize: 'none',
-                  borderRadius: '4px',
-                }}
-              />
-            </div>
+              <div className="phone-preview">
+                <div className="phone-box">
+                  <p>
+                    Your
+                    <br />
+                    Photo
+                    <br />
+                    Moment
+                  </p>
+                </div>
+              </div>
 
-            {allowAudio && (
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '10px',
-                    fontWeight: 500,
-                    letterSpacing: '0.2em',
-                    textTransform: 'uppercase',
-                    color: '#B8965A',
-                    marginBottom: '6px',
-                  }}
-                >
-                  Voice Message{' '}
-                  <span
-                    style={{
-                      color: '#C8B8B0',
-                      fontWeight: 300,
-                      textTransform: 'none',
-                      letterSpacing: 0,
-                    }}
-                  >
-                    (optional)
-                  </span>
-                </label>
+              <div className="tips">
+                <p>📸 Selfie with the couple</p>
+                <p>💍 Wedding ceremony highlights</p>
+                <p>🎉 Fun candid moments</p>
+                <p>🥂 Reception memories</p>
+                {allowVideo && <p>🎥 Videos and boomerangs are welcome</p>}
+                {allowAudio && <p>🎙️ Leave a voice message for the couple</p>}
+              </div>
 
-                {!isRecording ? (
-                  <button
-                    type="button"
-                    onClick={startRecording}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      background: '#FBF7F4',
-                      color: '#7B746F',
-                      border: '1px solid rgba(184,150,90,0.22)',
-                      borderRadius: '4px',
-                      fontFamily: "'DM Sans', sans-serif",
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    🎙️ Record Voice Message
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={stopRecording}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      background: '#C4847A',
-                      color: '#FFF',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontFamily: "'DM Sans', sans-serif",
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Stop Recording
-                  </button>
+              <div style={{ marginTop: 30, display: 'grid', gap: 12 }}>
+                <button className="primary-btn" onClick={() => setStep(3)}>
+                  Continue
+                </button>
+
+                <button className="secondary-btn" onClick={() => setStep(1)}>
+                  Back
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <div className="header">
+                <p className="eyebrow">Wedding Gallery</p>
+
+                <div className="name">{brideName}</div>
+                <div className="name-alt">{groomName}</div>
+
+                <div className="package-pill">{packageType} Package</div>
+              </div>
+
+              <div className="form-stack">
+                <div>
+                  <label className="label">Your Name</label>
+
+                  <input
+                    type="text"
+                    placeholder="e.g. Ahmad"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="input"
+                  />
+                </div>
+
+                <div>
+                  <label className="label">
+                    {allowVideo ? 'Photo / Video' : 'Photo'}
+                  </label>
+
+                  <input
+                    type="file"
+                    accept={allowVideo ? 'image/*,video/*' : 'image/*'}
+                    onChange={handleFileChange}
+                    className="file-input"
+                  />
+
+                  <p className="hint">
+                    {packageType === 'BASIC'
+                      ? 'Basic package supports photo upload only.'
+                      : packageType === 'PREMIUM'
+                        ? 'Premium package supports photo and video upload.'
+                        : 'VIP package supports photo, video and voice message.'}
+                  </p>
+                </div>
+
+                {preview && mediaType === 'image' && (
+                  <img src={preview} alt="Preview" className="preview" />
                 )}
 
-                {audioPreview && (
-                  <div style={{ marginTop: '10px' }}>
-                    <audio
-                      controls
-                      src={audioPreview}
-                      style={{ width: '100%' }}
-                    />
+                {preview && mediaType === 'video' && (
+                  <video
+                    src={preview}
+                    controls
+                    playsInline
+                    className="video-preview"
+                  />
+                )}
 
-                    <button
-                      type="button"
-                      onClick={removeAudio}
-                      style={{
-                        marginTop: '8px',
-                        width: '100%',
-                        padding: '10px 14px',
-                        background: 'transparent',
-                        color: '#9E8E86',
-                        border: '1px solid rgba(28,23,20,0.06)',
-                        borderRadius: '4px',
-                        fontFamily: "'DM Sans', sans-serif",
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        letterSpacing: '0.1em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Remove Voice Message
-                    </button>
+                <div>
+                  <label className="label">
+                    Message for the couple{' '}
+                    <span className="optional">(optional)</span>
+                  </label>
+
+                  <textarea
+                    placeholder="Wishing you both a lifetime of happiness…"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows={3}
+                    className="textarea"
+                  />
+                </div>
+
+                {allowAudio && (
+                  <div>
+                    <label className="label">
+                      Voice Message{' '}
+                      <span className="optional">(optional)</span>
+                    </label>
+
+                    {!isRecording ? (
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="secondary-btn"
+                      >
+                        🎙️ Record Voice Message
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={stopRecording}
+                        className="danger-btn"
+                      >
+                        Stop Recording
+                      </button>
+                    )}
+
+                    {audioPreview && (
+                      <div style={{ marginTop: 10 }}>
+                        <audio
+                          controls
+                          src={audioPreview}
+                          style={{ width: '100%' }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={removeAudio}
+                          className="secondary-btn"
+                          style={{ marginTop: 8 }}
+                        >
+                          Remove Voice Message
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                <button
+                  onClick={handleUpload}
+                  disabled={isUploading || isRecording}
+                  className="primary-btn"
+                >
+                  {isUploading ? 'Uploading…' : 'Upload Memory'}
+                </button>
+
+                <button
+                  onClick={() => setStep(2)}
+                  className="secondary-btn"
+                >
+                  Back
+                </button>
               </div>
-            )}
-
-            <button
-              onClick={handleUpload}
-              disabled={isUploading || isRecording}
-              style={{
-                width: '100%',
-                padding: '14px 24px',
-                background: isUploading ? '#9B948D' : '#14110F',
-                color: '#FFF',
-                border: 'none',
-                borderRadius: '3px',
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: '12px',
-                fontWeight: 600,
-                letterSpacing: '0.2em',
-                textTransform: 'uppercase',
-                cursor: isUploading || isRecording ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {isUploading ? 'Uploading…' : 'Upload Memory'}
-            </button>
-
-            <button
-              onClick={() => window.history.back()}
-              style={{
-                marginTop: '10px',
-                width: '100%',
-                padding: '12px 24px',
-                background: 'transparent',
-                color: '#7B746F',
-                border: '1px solid rgba(28,23,20,0.06)',
-                borderRadius: '3px',
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: '12px',
-                fontWeight: 600,
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-              }}
-            >
-              Back to Home
-            </button>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </>
