@@ -1,29 +1,78 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
 import QrCodeBox from './QrCodeBox'
+
+type PackageType = 'BASIC' | 'PREMIUM' | 'VIP'
+
+type WeddingEvent = {
+  id: number
+  slug: string
+  bride_name: string
+  groom_name: string
+  package_type: PackageType
+}
 
 export default function EventPage() {
   const params = useParams()
   const router = useRouter()
   const slug = params?.slug as string
 
+  const [event, setEvent] = useState<WeddingEvent | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [qrZoomed, setQrZoomed] = useState<'upload' | 'gallery' | null>(null)
+
   const uploadUrl = `https://wedding-qr-system.vercel.app/event/${slug}/upload`
   const galleryUrl = `https://wedding-qr-system.vercel.app/event/${slug}/gallery`
 
-  const [qrZoomed, setQrZoomed] = useState<'upload' | 'gallery' | null>(null)
-
-  const brideName = slug
+  const fallbackBrideName = slug
     ? slug.split('-')[0].charAt(0).toUpperCase() + slug.split('-')[0].slice(1)
     : ''
 
-  const groomName = slug
+  const fallbackGroomName = slug
     ? slug.split('-').slice(1).join(' ').replace(/\b\w/g, (c) => c.toUpperCase())
     : ''
 
+  const brideName = event?.bride_name || fallbackBrideName
+  const groomName = event?.groom_name || fallbackGroomName
+  const packageType = event?.package_type || 'BASIC'
+
   const zoomValue = qrZoomed === 'gallery' ? galleryUrl : uploadUrl
   const zoomTitle = qrZoomed === 'gallery' ? 'Couple Gallery QR' : 'Guest Upload QR'
+
+  useEffect(() => {
+    fetchEvent()
+  }, [slug])
+
+  async function fetchEvent() {
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, slug, bride_name, groom_name, package_type')
+      .eq('slug', slug)
+      .single()
+
+    if (!error && data) {
+      setEvent(data as WeddingEvent)
+    }
+
+    setLoading(false)
+  }
+
+  const getPackageDesc = () => {
+    if (packageType === 'VIP') {
+      return 'Photo, video and voice message are enabled for this wedding.'
+    }
+
+    if (packageType === 'PREMIUM') {
+      return 'Photo and video upload are enabled for this wedding.'
+    }
+
+    return 'Photo upload is enabled for this wedding.'
+  }
 
   return (
     <>
@@ -86,6 +135,28 @@ export default function EventPage() {
           font-size: 20px;
           display: block;
           margin: 2px 0;
+        }
+
+        .package-badge {
+          margin-top: 16px;
+          display: inline-block;
+          padding: 7px 14px;
+          border-radius: 999px;
+          background: #FBF7F4;
+          border: 1px solid rgba(184,150,90,0.18);
+          color: #B8965A;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .package-desc {
+          margin: 10px auto 0;
+          max-width: 420px;
+          font-size: 12px;
+          color: #8B7B74;
+          line-height: 1.6;
         }
 
         .qr-grid {
@@ -225,6 +296,13 @@ export default function EventPage() {
           color: #B8A8A0;
         }
 
+        .loading-text {
+          color: #9E8E86;
+          font-size: 13px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
         @media (max-width: 640px) {
           .event-card {
             padding: 34px 22px 28px;
@@ -240,7 +318,9 @@ export default function EventPage() {
       {qrZoomed && (
         <div className="qr-overlay" onClick={() => setQrZoomed(null)}>
           <div className="qr-zoom-inner" onClick={(e) => e.stopPropagation()}>
-            <p className="qr-zoom-name">{brideName} & {groomName}</p>
+            <p className="qr-zoom-name">
+              {brideName} & {groomName}
+            </p>
             <p className="qr-zoom-type">{zoomTitle}</p>
             <QrCodeBox value={zoomValue} />
             <p className="qr-zoom-close">Tap anywhere to close</p>
@@ -250,51 +330,64 @@ export default function EventPage() {
 
       <div className="event-page">
         <div className="event-card">
-          <p className="event-eyebrow">Wedding QR System</p>
+          {loading ? (
+            <p className="loading-text">Loading event...</p>
+          ) : (
+            <>
+              <p className="event-eyebrow">Wedding QR System</p>
 
-          <div className="event-couple">{brideName}</div>
-          <span className="event-divider">&</span>
-          <div className="event-couple">
-            <em>{groomName}</em>
-          </div>
-
-          <div className="qr-grid">
-            <div className="qr-card">
-              <p className="qr-title">Guest Upload QR</p>
-              <div className="qr-frame" onClick={() => setQrZoomed('upload')}>
-                <QrCodeBox value={uploadUrl} />
+              <div className="event-couple">{brideName}</div>
+              <span className="event-divider">&</span>
+              <div className="event-couple">
+                <em>{groomName}</em>
               </div>
-              <p className="qr-desc">Tetamu scan QR ni untuk upload gambar.</p>
-              <span className="qr-link">{uploadUrl}</span>
-            </div>
 
-            <div className="qr-card">
-              <p className="qr-title">Couple Gallery QR</p>
-              <div className="qr-frame" onClick={() => setQrZoomed('gallery')}>
-                <QrCodeBox value={galleryUrl} />
+              <div className="package-badge">{packageType} Package</div>
+              <p className="package-desc">{getPackageDesc()}</p>
+
+              <div className="qr-grid">
+                <div className="qr-card">
+                  <p className="qr-title">Guest Upload QR</p>
+                  <div className="qr-frame" onClick={() => setQrZoomed('upload')}>
+                    <QrCodeBox value={uploadUrl} />
+                  </div>
+                  <p className="qr-desc">
+                    Tetamu scan QR ni untuk upload memory majlis.
+                  </p>
+                  <span className="qr-link">{uploadUrl}</span>
+                </div>
+
+                <div className="qr-card">
+                  <p className="qr-title">Couple Gallery QR</p>
+                  <div className="qr-frame" onClick={() => setQrZoomed('gallery')}>
+                    <QrCodeBox value={galleryUrl} />
+                  </div>
+                  <p className="qr-desc">
+                    Pengantin scan QR ni untuk tengok gallery.
+                  </p>
+                  <span className="qr-link">{galleryUrl}</span>
+                </div>
               </div>
-              <p className="qr-desc">Pengantin scan QR ni untuk tengok gallery.</p>
-              <span className="qr-link">{galleryUrl}</span>
-            </div>
-          </div>
 
-          <div className="btn-row">
-            <a href={uploadUrl} className="btn-primary">
-              Open Upload
-            </a>
+              <div className="btn-row">
+                <a href={uploadUrl} className="btn-primary">
+                  Open Upload
+                </a>
 
-            <a href={galleryUrl} className="btn-ghost">
-              Open Gallery
-            </a>
-          </div>
+                <a href={galleryUrl} className="btn-ghost">
+                  Open Gallery
+                </a>
+              </div>
 
-          <button
-            className="btn-ghost"
-            style={{ marginTop: '12px' }}
-            onClick={() => router.push('/')}
-          >
-            Back to Home
-          </button>
+              <button
+                className="btn-ghost"
+                style={{ marginTop: '12px' }}
+                onClick={() => router.push('/')}
+              >
+                Back to Home
+              </button>
+            </>
+          )}
         </div>
       </div>
     </>

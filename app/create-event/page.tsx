@@ -2,12 +2,17 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+type PackageType = 'BASIC' | 'PREMIUM' | 'VIP'
 
 export default function CreateEventPage() {
   const router = useRouter()
   const [brideName, setBrideName] = useState('')
   const [groomName, setGroomName] = useState('')
   const [eventDate, setEventDate] = useState('')
+  const [packageType, setPackageType] = useState<PackageType>('BASIC')
+  const [isCreating, setIsCreating] = useState(false)
 
   const createSlug = (bride: string, groom: string) => {
     return `${bride}-${groom}`
@@ -17,14 +22,46 @@ export default function CreateEventPage() {
       .replace(/[^a-z0-9-]/g, '')
   }
 
-  const handleGenerateEvent = () => {
+  const handleGenerateEvent = async () => {
     if (!brideName || !groomName || !eventDate) {
       alert('Please fill in all fields')
       return
     }
-    const slug = createSlug(brideName, groomName)
-    router.push(`/event/${slug}`)
+
+    try {
+      setIsCreating(true)
+
+      const slug = createSlug(brideName, groomName)
+
+      const { error } = await supabase.from('events').upsert(
+        {
+          slug,
+          bride_name: brideName.trim(),
+          groom_name: groomName.trim(),
+          package_type: packageType,
+        },
+        { onConflict: 'slug' }
+      )
+
+      if (error) {
+        alert(error.message)
+        return
+      }
+
+      router.push(`/event/${slug}`)
+    } catch {
+      alert('Failed to create wedding event')
+    } finally {
+      setIsCreating(false)
+    }
   }
+
+  const packageDescription =
+    packageType === 'BASIC'
+      ? 'Photo upload only.'
+      : packageType === 'PREMIUM'
+        ? 'Photo and video upload enabled.'
+        : 'Photo, video and voice message enabled.'
 
   return (
     <>
@@ -44,7 +81,6 @@ export default function CreateEventPage() {
           overflow: hidden;
         }
 
-        /* Botanical SVG background */
         .bg-botanical {
           position: fixed;
           inset: 0;
@@ -60,7 +96,6 @@ export default function CreateEventPage() {
           padding: 24px;
         }
 
-        /* Top monogram / crest area */
         .crest {
           text-align: center;
           margin-bottom: 32px;
@@ -93,7 +128,6 @@ export default function CreateEventPage() {
         }
 
         .eyebrow {
-          font-family: 'DM Sans', sans-serif;
           font-size: 10px;
           font-weight: 500;
           letter-spacing: 0.25em;
@@ -124,7 +158,6 @@ export default function CreateEventPage() {
           letter-spacing: 0.02em;
         }
 
-        /* Card */
         .card {
           background: #FFFFFF;
           border-radius: 4px;
@@ -136,7 +169,6 @@ export default function CreateEventPage() {
           position: relative;
         }
 
-        /* Corner ornaments on card */
         .card::before,
         .card::after {
           content: '';
@@ -147,12 +179,16 @@ export default function CreateEventPage() {
           border-style: solid;
           opacity: 0.5;
         }
+
         .card::before {
-          top: 12px; left: 12px;
+          top: 12px;
+          left: 12px;
           border-width: 1px 0 0 1px;
         }
+
         .card::after {
-          bottom: 12px; right: 12px;
+          bottom: 12px;
+          right: 12px;
           border-width: 0 1px 1px 0;
         }
 
@@ -202,7 +238,6 @@ export default function CreateEventPage() {
           border-bottom-color: #C4847A;
         }
 
-        /* Ampersand divider */
         .ampersand-row {
           display: flex;
           align-items: center;
@@ -225,7 +260,40 @@ export default function CreateEventPage() {
           line-height: 1;
         }
 
-        /* CTA button */
+        .package-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin-top: 10px;
+        }
+
+        .package-btn {
+          padding: 12px 8px;
+          border: 1px solid #E8DDD6;
+          background: #FFFFFF;
+          color: #8B7B74;
+          font-size: 11px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          cursor: pointer;
+          border-radius: 4px;
+          font-weight: 600;
+          transition: all 0.2s ease;
+        }
+
+        .package-btn.active {
+          border-color: #C4847A;
+          background: #FFF6F4;
+          color: #C4847A;
+        }
+
+        .package-desc {
+          margin-top: 12px;
+          font-size: 11px;
+          color: #9E8E86;
+          line-height: 1.6;
+        }
+
         .btn-generate {
           width: 100%;
           padding: 15px 24px;
@@ -240,19 +308,17 @@ export default function CreateEventPage() {
           text-transform: uppercase;
           cursor: pointer;
           transition: background 0.2s ease, transform 0.1s ease;
-          position: relative;
-          overflow: hidden;
         }
 
         .btn-generate:hover {
           background: #C4847A;
         }
 
-        .btn-generate:active {
-          transform: scale(0.99);
+        .btn-generate:disabled {
+          background: #9B948D;
+          cursor: not-allowed;
         }
 
-        /* Footer note */
         .footer-note {
           text-align: center;
           margin-top: 20px;
@@ -261,38 +327,53 @@ export default function CreateEventPage() {
           letter-spacing: 0.05em;
         }
 
-        /* Date input override */
         input[type="date"]::-webkit-calendar-picker-indicator {
           opacity: 0.3;
           cursor: pointer;
           filter: sepia(1) hue-rotate(330deg);
         }
+
+        @media (max-width: 520px) {
+          .card {
+            padding: 34px 24px 30px;
+          }
+
+          .package-grid {
+            grid-template-columns: 1fr;
+          }
+        }
       `}</style>
 
       <div className="page">
-
-        {/* Botanical SVG background */}
-        <svg className="bg-botanical" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
-          {/* Top-left botanical spray */}
+        <svg
+          className="bg-botanical"
+          viewBox="0 0 1440 900"
+          xmlns="http://www.w3.org/2000/svg"
+          preserveAspectRatio="xMidYMid slice"
+        >
           <g opacity="0.12" fill="none" stroke="#B8965A" strokeWidth="1">
             <path d="M -20 -10 Q 80 60 60 160" />
             <path d="M 20 30 Q 110 80 100 200" />
             <path d="M 60 10 Q 40 120 130 180" />
-            {/* Leaves */}
             <ellipse cx="65" cy="155" rx="18" ry="9" transform="rotate(-30 65 155)" />
             <ellipse cx="105" cy="195" rx="22" ry="10" transform="rotate(-50 105 195)" />
             <ellipse cx="135" cy="175" rx="16" ry="7" transform="rotate(20 135 175)" />
             <ellipse cx="30" cy="100" rx="14" ry="6" transform="rotate(-60 30 100)" />
             <ellipse cx="80" cy="80" rx="12" ry="5" transform="rotate(40 80 80)" />
-            {/* Small florals */}
             <circle cx="68" cy="45" r="4" />
             <circle cx="72" cy="38" r="2" />
             <circle cx="62" cy="38" r="2" />
             <circle cx="75" cy="50" r="2" />
             <circle cx="60" cy="50" r="2" />
           </g>
-          {/* Bottom-right botanical spray */}
-          <g opacity="0.10" fill="none" stroke="#C4847A" strokeWidth="1" transform="translate(1440, 900) rotate(180)">
+
+          <g
+            opacity="0.10"
+            fill="none"
+            stroke="#C4847A"
+            strokeWidth="1"
+            transform="translate(1440, 900) rotate(180)"
+          >
             <path d="M -20 -10 Q 80 60 60 160" />
             <path d="M 20 30 Q 110 80 100 200" />
             <path d="M 60 10 Q 40 120 130 180" />
@@ -307,8 +388,14 @@ export default function CreateEventPage() {
             <circle cx="75" cy="50" r="2" />
             <circle cx="60" cy="50" r="2" />
           </g>
-          {/* Top-right small accent */}
-          <g opacity="0.07" fill="none" stroke="#B8965A" strokeWidth="0.8" transform="translate(1380, 20)">
+
+          <g
+            opacity="0.07"
+            fill="none"
+            stroke="#B8965A"
+            strokeWidth="0.8"
+            transform="translate(1380, 20)"
+          >
             <circle cx="0" cy="0" r="30" />
             <circle cx="0" cy="0" r="20" />
             <circle cx="0" cy="0" r="10" />
@@ -318,24 +405,27 @@ export default function CreateEventPage() {
         </svg>
 
         <div className="card-wrapper">
-          {/* Header crest */}
           <div className="crest">
             <p className="eyebrow">Wedding Gallery</p>
+
             <div className="crest-ornament">
               <span className="crest-line"></span>
               <span className="crest-diamond"></span>
               <span className="crest-line right"></span>
             </div>
+
             <h1 className="main-title">
-              Create Your<br /><em>Wedding Event</em>
+              Create Your<br />
+              <em>Wedding Event</em>
             </h1>
-            <p className="subtitle">Your memories, beautifully collected in one place</p>
+
+            <p className="subtitle">
+              Your memories, beautifully collected in one place
+            </p>
           </div>
 
-          {/* Form card */}
           <div className="card">
             <div className="field-group">
-
               <div className="field">
                 <label className="field-label">Bride's Name</label>
                 <input
@@ -370,14 +460,41 @@ export default function CreateEventPage() {
                   onChange={(e) => setEventDate(e.target.value)}
                 />
               </div>
+
+              <div className="field">
+                <label className="field-label">Package Type</label>
+
+                <div className="package-grid">
+                  {(['BASIC', 'PREMIUM', 'VIP'] as PackageType[]).map((pkg) => (
+                    <button
+                      key={pkg}
+                      type="button"
+                      onClick={() => setPackageType(pkg)}
+                      className={`package-btn ${
+                        packageType === pkg ? 'active' : ''
+                      }`}
+                    >
+                      {pkg}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="package-desc">{packageDescription}</p>
+              </div>
             </div>
 
-            <button className="btn-generate" onClick={handleGenerateEvent}>
-              Generate Your Gallery
+            <button
+              className="btn-generate"
+              onClick={handleGenerateEvent}
+              disabled={isCreating}
+            >
+              {isCreating ? 'Creating...' : 'Generate Your Gallery'}
             </button>
           </div>
 
-          <p className="footer-note">A private gallery will be created for your guests</p>
+          <p className="footer-note">
+            A private gallery will be created for your guests
+          </p>
         </div>
       </div>
     </>
