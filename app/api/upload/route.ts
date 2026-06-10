@@ -13,13 +13,21 @@ export async function POST(request: Request) {
     const formData = await request.formData()
 
     const file = formData.get('file') as File | null
-    const slug = formData.get('slug') as string
-    const guestName = formData.get('guestName') as string
-    const message = formData.get('message') as string
+    const slug = formData.get('slug') as string | null
+    const guestName = formData.get('guestName') as string | null
+    const message = formData.get('message') as string | null
+    const audioUrl = formData.get('audioUrl') as string | null
 
     if (!file || !slug) {
       return NextResponse.json(
         { error: 'Missing file or slug' },
+        { status: 400 }
+      )
+    }
+
+    if (!guestName) {
+      return NextResponse.json(
+        { error: 'Missing guest name' },
         { status: 400 }
       )
     }
@@ -53,11 +61,19 @@ export async function POST(request: Request) {
         .end(buffer)
     })
 
+    if (!uploadResult?.secure_url) {
+      return NextResponse.json(
+        { error: 'Cloudinary upload failed' },
+        { status: 500 }
+      )
+    }
+
     const { error: supabaseError } = await supabase.from('photos').insert({
       slug,
       guest_name: guestName,
-      message,
+      message: message || null,
       image_url: uploadResult.secure_url,
+      audio_url: audioUrl || null,
     })
 
     if (supabaseError) {
@@ -70,6 +86,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       imageUrl: uploadResult.secure_url,
+      audioUrl: audioUrl || null,
     })
   } catch (error) {
     console.error('UPLOAD_ERROR:', error)
