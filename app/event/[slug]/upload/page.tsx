@@ -24,7 +24,7 @@ export default function UploadPage() {
 
   const [step, setStep] = useState(1)
   const [event, setEvent] = useState<WeddingEvent | null>(null)
-  const [eventLoading, setEventLoading] = useState(true)
+  const [eventLoading, setEventLoading] = useState(false)
   const [guestName, setGuestName] = useState('')
   const [message, setMessage] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -73,22 +73,26 @@ export default function UploadPage() {
   }, [preview, audioPreview])
 
   async function fetchEvent() {
-    setEventLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, slug, bride_name, groom_name, package_type')
+        .eq('slug', slug)
+        .maybeSingle()
 
-    const { data, error } = await supabase
-      .from('events')
-      .select('id, slug, bride_name, groom_name, package_type')
-      .eq('slug', slug)
-      .maybeSingle()
+      if (error) {
+        console.error('FETCH_EVENT_ERROR:', error)
+        return
+      }
 
-    if (error) {
+      if (data) {
+        setEvent(data as WeddingEvent)
+      }
+    } catch (error) {
       console.error('FETCH_EVENT_ERROR:', error)
-      setErrorMessage('Unable to load this wedding event.')
-    } else if (data) {
-      setEvent(data as WeddingEvent)
+    } finally {
+      setEventLoading(false)
     }
-
-    setEventLoading(false)
   }
 
   const getSupportedMimeType = () => {
@@ -344,33 +348,41 @@ export default function UploadPage() {
     }
   }
 
-  if (eventLoading) {
-    return <div className="loading-screen">Preparing your wedding experience…</div>
-  }
-
   if (success) {
     return (
       <>
         <style>{sharedStyles}</style>
 
-        <main className="upload-page">
+        <main className="upload-page success-page">
           <section className="success-card">
-            <div className="success-icon">✓</div>
+            <div className="success-icon" aria-hidden="true">✓</div>
             <p className="success-kicker">Memory shared</p>
-            <h1 className="success-title">Thank you, {guestName}.</h1>
+
+            <h1 className="success-title">
+              Thank you, <em>{guestName}.</em>
+            </h1>
+
             <p className="success-copy">
-              Your memory has been added to {brideName} & {groomName}&apos;s
-              wedding gallery.
+              Thank you for celebrating with us. Your memory has been safely
+              shared with {brideName} & {groomName}.
             </p>
 
+            <div className="success-divider" aria-hidden="true" />
+
             <div className="success-actions">
-              <a href={`/event/${slug}/gallery`} className="primary-action">
-                View gallery
-              </a>
-              <button type="button" className="secondary-action" onClick={resetForm}>
-                Share another memory
+              <button
+                type="button"
+                className="success-primary-button"
+                onClick={resetForm}
+              >
+                <span>Share Another Memory</span>
+                <span className="success-button-arrow" aria-hidden="true">→</span>
               </button>
             </div>
+
+            <p className="success-note">
+              You may now close this page or share another moment.
+            </p>
           </section>
         </main>
       </>
@@ -1168,45 +1180,141 @@ const sharedStyles = `
     cursor: not-allowed;
   }
 
+  .success-page {
+    padding: 30px 16px;
+  }
+
   .success-card {
-    padding: clamp(38px, 7vw, 68px);
+    width: min(760px, 100%);
+    min-height: 540px;
+    padding: clamp(48px, 8vw, 82px) clamp(28px, 8vw, 86px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     text-align: center;
   }
 
   .success-icon {
-    width: 62px;
-    height: 62px;
-    margin: 0 auto 20px;
+    width: 68px;
+    height: 68px;
+    margin: 0 auto 22px;
+    border: 1px solid rgba(85, 133, 94, 0.16);
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: rgba(85, 133, 94, 0.12);
+    background: linear-gradient(
+      145deg,
+      rgba(111, 153, 118, 0.17),
+      rgba(85, 133, 94, 0.08)
+    );
     color: #5c8263;
-    font-size: 24px;
+    box-shadow: 0 12px 30px rgba(85, 133, 94, 0.1);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 31px;
   }
 
   .success-kicker {
-    margin: 0 0 10px;
+    margin: 0 0 16px;
     color: var(--upload-accent);
     font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
   }
 
   .success-title {
     margin: 0;
     font-family: 'Cormorant Garamond', serif;
-    font-size: clamp(42px, 7vw, 64px);
+    font-size: clamp(46px, 7vw, 68px);
     font-weight: 600;
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+  }
+
+  .success-title em {
+    color: var(--upload-accent);
+    font-weight: 400;
+    font-style: italic;
   }
 
   .success-copy {
-    max-width: 460px;
-    margin: 16px auto 0;
+    max-width: 520px;
+    margin: 22px auto 0;
     color: var(--upload-muted);
-    font-size: 13px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+
+  .success-divider {
+    width: 72px;
+    height: 1px;
+    margin: 32px auto 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(167, 99, 86, 0.46),
+      transparent
+    );
+  }
+
+  .success-actions {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-top: 32px;
+  }
+
+  .success-primary-button {
+    width: min(390px, 100%);
+    min-height: 58px;
+    border: 0;
+    border-radius: 999px;
+    padding: 0 24px 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: linear-gradient(135deg, #281814 0%, #3a241f 100%);
+    color: #fffaf6;
+    box-shadow: 0 16px 34px rgba(36, 23, 19, 0.19);
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      background 0.2s ease;
+  }
+
+  .success-primary-button:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #35211c 0%, #4a2d26 100%);
+    box-shadow: 0 20px 42px rgba(36, 23, 19, 0.24);
+  }
+
+  .success-primary-button:active {
+    transform: translateY(0);
+  }
+
+  .success-button-arrow {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 15px;
+    letter-spacing: 0;
+  }
+
+  .success-note {
+    margin: 18px 0 0;
+    color: var(--upload-soft);
+    font-size: 10px;
+    line-height: 1.6;
   }
 
   @media (max-width: 680px) {
@@ -1245,9 +1353,34 @@ const sharedStyles = `
       grid-template-columns: 1fr;
     }
 
-    .button-row,
-    .success-actions {
+    .button-row {
       flex-direction: column-reverse;
+    }
+
+    .success-page {
+      padding: 0;
+    }
+
+    .success-card {
+      min-height: 100dvh;
+      padding: 52px 22px;
+      border-radius: 0;
+    }
+
+    .success-title {
+      font-size: clamp(43px, 14vw, 58px);
+    }
+
+    .success-copy {
+      font-size: 13px;
+    }
+
+    .success-actions {
+      margin-top: 28px;
+    }
+
+    .success-primary-button {
+      width: 100%;
     }
   }
 `

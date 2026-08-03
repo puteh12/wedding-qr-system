@@ -34,9 +34,7 @@ export default function EventPage() {
   const [copied, setCopied] = useState<QrType | null>(null)
 
   const baseUrl =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://wedding-qr-system.vercel.app'
+    process.env.NEXT_PUBLIC_SITE_URL || 'http://10.10.0.170:3000'
 
   const uploadUrl = `${baseUrl}/event/${slug}/upload`
   const galleryUrl = `${baseUrl}/event/${slug}/gallery`
