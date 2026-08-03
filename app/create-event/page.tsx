@@ -1,18 +1,57 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 type PackageType = 'BASIC' | 'PREMIUM' | 'VIP'
 
+type PackageOption = {
+  name: PackageType
+  label: string
+  price: string
+  description: string
+  features: string[]
+}
+
+const packageOptions: PackageOption[] = [
+  {
+    name: 'BASIC',
+    label: 'Basic',
+    price: 'RM49',
+    description: 'A simple wedding gallery for photo memories.',
+    features: ['Photo uploads', 'Private event link', 'QR code access'],
+  },
+  {
+    name: 'PREMIUM',
+    label: 'Premium',
+    price: 'RM99',
+    description: 'Perfect for couples who want photos and videos.',
+    features: ['Photo uploads', 'Video uploads', 'Live gallery'],
+  },
+  {
+    name: 'VIP',
+    label: 'VIP',
+    price: 'RM149',
+    description: 'The complete wedding memory experience.',
+    features: ['Photos & videos', 'Voice messages', 'Priority experience'],
+  },
+]
+
 export default function CreateEventPage() {
   const router = useRouter()
+
   const [brideName, setBrideName] = useState('')
   const [groomName, setGroomName] = useState('')
   const [eventDate, setEventDate] = useState('')
   const [packageType, setPackageType] = useState<PackageType>('BASIC')
   const [isCreating, setIsCreating] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const selectedPackage = useMemo(
+    () => packageOptions.find((item) => item.name === packageType)!,
+    [packageType]
+  )
 
   const createSlug = (bride: string, groom: string) => {
     return `${bride}-${groom}`
@@ -20,11 +59,14 @@ export default function CreateEventPage() {
       .trim()
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
   }
 
   const handleGenerateEvent = async () => {
-    if (!brideName || !groomName || !eventDate) {
-      alert('Please fill in all fields')
+    setErrorMessage('')
+
+    if (!brideName.trim() || !groomName.trim() || !eventDate) {
+      setErrorMessage('Please complete all wedding details before continuing.')
       return
     }
 
@@ -33,470 +75,653 @@ export default function CreateEventPage() {
 
       const slug = createSlug(brideName, groomName)
 
-      const { error } = await supabase.from('events').upsert(
-        {
-          slug,
-          bride_name: brideName.trim(),
-          groom_name: groomName.trim(),
-          package_type: packageType,
-        },
-        { onConflict: 'slug' }
-      )
+      const { data: existingEvent, error: existingError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle()
 
-      if (error) {
-        alert(error.message)
+      if (existingError) {
+        throw existingError
+      }
+
+      if (existingEvent) {
+        setErrorMessage(
+          'An event with these names already exists. Please use a slightly different name.'
+        )
         return
       }
 
+      const { error } = await supabase.from('events').insert({
+        slug,
+        bride_name: brideName.trim(),
+        groom_name: groomName.trim(),
+        package_type: packageType,
+      })
+
+      if (error) {
+        throw error
+      }
+
       router.push(`/event/${slug}`)
-    } catch {
-      alert('Failed to create wedding event')
+    } catch (error) {
+      console.error('CREATE_EVENT_ERROR:', error)
+      setErrorMessage('Unable to create the wedding event. Please try again.')
     } finally {
       setIsCreating(false)
     }
   }
 
-  const packageDescription =
-    packageType === 'BASIC'
-      ? 'Photo upload only.'
-      : packageType === 'PREMIUM'
-        ? 'Photo and video upload enabled.'
-        : 'Photo, video and voice message enabled.'
-
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+          --create-bg: #f4ede7;
+          --create-surface: rgba(255, 252, 249, 0.9);
+          --create-card: #fffdfb;
+          --create-ink: #241713;
+          --create-muted: #8d7b73;
+          --create-soft: #b7a59c;
+          --create-accent: #a76356;
+          --create-accent-dark: #80483f;
+          --create-line: rgba(89, 53, 44, 0.11);
+        }
 
-        .page {
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          background: var(--create-bg);
+          color: var(--create-ink);
+        }
+
+        button,
+        input {
+          font: inherit;
+        }
+
+        .create-page {
           min-height: 100vh;
-          background-color: #FAF7F2;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          overflow-x: hidden;
+          background:
+            radial-gradient(circle at 7% 5%, rgba(198, 141, 120, 0.2), transparent 28%),
+            radial-gradient(circle at 92% 8%, rgba(228, 191, 177, 0.23), transparent 30%),
+            linear-gradient(180deg, #f9f3ee 0%, #f3ece6 52%, #ece2da 100%);
           font-family: 'DM Sans', sans-serif;
-          position: relative;
-          overflow: hidden;
         }
 
-        .bg-botanical {
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .card-wrapper {
-          position: relative;
-          z-index: 2;
-          width: 100%;
-          max-width: 480px;
-          padding: 24px;
-        }
-
-        .crest {
-          text-align: center;
-          margin-bottom: 32px;
-        }
-
-        .crest-ornament {
+        .create-topbar {
           display: flex;
           align-items: center;
-          justify-content: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 16px clamp(16px, 4vw, 52px);
+          border-bottom: 1px solid rgba(78, 47, 39, 0.08);
+          background: rgba(249, 243, 238, 0.82);
+          backdrop-filter: blur(18px);
+        }
+
+        .brand-lockup {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: var(--create-ink);
+          text-decoration: none;
+        }
+
+        .brand-mark {
+          width: 30px;
+          height: 30px;
+          border: 1px solid rgba(167, 99, 86, 0.35);
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          background: rgba(255,255,255,0.68);
+          color: var(--create-accent);
+          font-family: 'Cormorant Garamond', serif;
+          font-style: italic;
+        }
+
+        .brand-text {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+        }
+
+        .create-shell {
+          width: min(1240px, 100%);
+          margin: 0 auto;
+          padding: 44px clamp(14px, 4vw, 48px) 76px;
+        }
+
+        .create-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+          gap: 24px;
+          align-items: start;
+        }
+
+        .intro-card,
+        .form-card {
+          border: 1px solid rgba(91, 55, 46, 0.09);
+          border-radius: 26px;
+          background: var(--create-surface);
+          box-shadow: 0 18px 46px rgba(67, 39, 31, 0.07);
+          backdrop-filter: blur(18px);
+        }
+
+        .intro-card {
+          position: sticky;
+          top: 24px;
+          overflow: hidden;
+          min-height: 640px;
+          padding: clamp(34px, 5vw, 58px);
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .intro-card::before {
+          content: '';
+          position: absolute;
+          width: 280px;
+          height: 280px;
+          right: -100px;
+          top: -100px;
+          border-radius: 50%;
+          background: rgba(196, 132, 112, 0.11);
+        }
+
+        .intro-kicker {
+          position: relative;
+          z-index: 1;
+          margin: 0 0 18px;
+          color: var(--create-accent);
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.28em;
+          text-transform: uppercase;
+        }
+
+        .intro-title {
+          position: relative;
+          z-index: 1;
+          margin: 0;
+          font-family: 'Cormorant Garamond', serif;
+          font-size: clamp(58px, 7vw, 92px);
+          font-weight: 500;
+          line-height: 0.86;
+          letter-spacing: -0.05em;
+        }
+
+        .intro-title em {
+          display: block;
+          margin-top: 12px;
+          color: var(--create-accent);
+          font-weight: 400;
+          font-style: italic;
+        }
+
+        .intro-copy {
+          max-width: 430px;
+          margin: 28px 0 0;
+          color: var(--create-muted);
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 21px;
+          line-height: 1.5;
+          font-style: italic;
+        }
+
+        .intro-benefits {
+          display: grid;
           gap: 12px;
-          margin-bottom: 12px;
+          margin-top: 34px;
         }
 
-        .crest-line {
-          height: 1px;
-          width: 60px;
-          background: linear-gradient(to right, transparent, #B8965A);
+        .benefit-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: var(--create-muted);
+          font-size: 12px;
         }
 
-        .crest-line.right {
-          background: linear-gradient(to left, transparent, #B8965A);
-        }
-
-        .crest-diamond {
-          width: 6px;
-          height: 6px;
-          background: #B8965A;
-          transform: rotate(45deg);
+        .benefit-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          background: rgba(167, 99, 86, 0.08);
+          color: var(--create-accent-dark);
+          font-size: 14px;
           flex-shrink: 0;
         }
 
-        .eyebrow {
-          font-size: 10px;
-          font-weight: 500;
-          letter-spacing: 0.25em;
-          text-transform: uppercase;
-          color: #B8965A;
-          margin-bottom: 8px;
+        .form-card {
+          padding: clamp(24px, 4vw, 40px);
         }
 
-        .main-title {
-          font-family: 'Cormorant Garamond', serif;
-          font-size: clamp(36px, 7vw, 52px);
-          font-weight: 300;
-          color: #1C1714;
-          line-height: 1.1;
-          letter-spacing: -0.01em;
-        }
-
-        .main-title em {
-          font-style: italic;
-          color: #C4847A;
-        }
-
-        .subtitle {
-          font-size: 13px;
-          color: #8B7B74;
-          font-weight: 300;
-          margin-top: 8px;
-          letter-spacing: 0.02em;
-        }
-
-        .card {
-          background: #FFFFFF;
-          border-radius: 4px;
-          padding: 40px 40px 36px;
-          box-shadow:
-            0 2px 4px rgba(28, 23, 20, 0.04),
-            0 12px 40px rgba(28, 23, 20, 0.08),
-            0 0 0 1px rgba(184, 150, 90, 0.12);
-          position: relative;
-        }
-
-        .card::before,
-        .card::after {
-          content: '';
-          position: absolute;
-          width: 20px;
-          height: 20px;
-          border-color: #B8965A;
-          border-style: solid;
-          opacity: 0.5;
-        }
-
-        .card::before {
-          top: 12px;
-          left: 12px;
-          border-width: 1px 0 0 1px;
-        }
-
-        .card::after {
-          bottom: 12px;
-          right: 12px;
-          border-width: 0 1px 1px 0;
-        }
-
-        .field-group {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
+        .form-heading {
           margin-bottom: 28px;
         }
 
+        .form-kicker {
+          margin: 0 0 8px;
+          color: var(--create-accent);
+          font-size: 9px;
+          font-weight: 600;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+        }
+
+        .form-title {
+          margin: 0;
+          font-family: 'Cormorant Garamond', serif;
+          font-size: clamp(34px, 5vw, 48px);
+          font-weight: 600;
+        }
+
+        .form-subtitle {
+          margin: 8px 0 0;
+          color: var(--create-muted);
+          font-size: 12px;
+          line-height: 1.7;
+        }
+
+        .field-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
         .field {
-          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .field.full {
+          grid-column: 1 / -1;
         }
 
         .field-label {
-          display: block;
-          font-size: 10px;
-          font-weight: 500;
-          letter-spacing: 0.2em;
+          color: var(--create-soft);
+          font-size: 9px;
+          font-weight: 600;
+          letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: #B8965A;
-          margin-bottom: 6px;
         }
 
         .field input {
           width: 100%;
-          border: none;
-          border-bottom: 1px solid #E8DDD6;
-          background: transparent;
-          padding: 8px 0 10px;
-          font-family: 'Cormorant Garamond', serif;
-          font-size: 18px;
-          font-weight: 400;
-          color: #1C1714;
+          border: 1px solid rgba(92, 57, 47, 0.1);
+          border-radius: 14px;
+          padding: 14px 15px;
           outline: none;
-          transition: border-color 0.2s ease;
-          letter-spacing: 0.01em;
-        }
-
-        .field input::placeholder {
-          color: #C8B8B0;
-          font-style: italic;
-          font-size: 17px;
+          background: rgba(255, 253, 251, 0.82);
+          color: var(--create-ink);
+          font-size: 14px;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
         .field input:focus {
-          border-bottom-color: #C4847A;
+          border-color: rgba(167, 99, 86, 0.45);
+          box-shadow: 0 0 0 4px rgba(167, 99, 86, 0.08);
         }
 
-        .ampersand-row {
+        .field input::placeholder {
+          color: #c6b7af;
+        }
+
+        .package-section {
+          margin-top: 28px;
+        }
+
+        .package-heading {
           display: flex;
-          align-items: center;
-          gap: 12px;
-          margin: -4px 0;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 14px;
+          margin-bottom: 14px;
         }
 
-        .amp-line {
-          flex: 1;
-          height: 1px;
-          background: #F0E6E0;
-        }
-
-        .amp-char {
+        .package-heading h2 {
+          margin: 0;
           font-family: 'Cormorant Garamond', serif;
-          font-size: 22px;
-          font-style: italic;
-          color: #D4A0A0;
-          font-weight: 300;
-          line-height: 1;
+          font-size: 28px;
+          font-weight: 600;
+        }
+
+        .package-heading p {
+          margin: 0;
+          color: var(--create-soft);
+          font-size: 10px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
         }
 
         .package-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 10px;
-          margin-top: 10px;
+          gap: 12px;
         }
 
-        .package-btn {
-          padding: 12px 8px;
-          border: 1px solid #E8DDD6;
-          background: #FFFFFF;
-          color: #8B7B74;
-          font-size: 11px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          cursor: pointer;
-          border-radius: 4px;
-          font-weight: 600;
-          transition: all 0.2s ease;
-        }
-
-        .package-btn.active {
-          border-color: #C4847A;
-          background: #FFF6F4;
-          color: #C4847A;
-        }
-
-        .package-desc {
-          margin-top: 12px;
-          font-size: 11px;
-          color: #9E8E86;
-          line-height: 1.6;
-        }
-
-        .btn-generate {
+        .package-option {
           width: 100%;
-          padding: 15px 24px;
-          background: #1C1714;
-          color: #FAF7F2;
-          border: none;
-          border-radius: 2px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 11px;
-          font-weight: 500;
-          letter-spacing: 0.2em;
-          text-transform: uppercase;
+          border: 1px solid rgba(92, 57, 47, 0.09);
+          border-radius: 18px;
+          padding: 18px;
+          background: rgba(255, 253, 251, 0.78);
+          color: var(--create-ink);
           cursor: pointer;
-          transition: background 0.2s ease, transform 0.1s ease;
+          text-align: left;
+          transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .btn-generate:hover {
-          background: #C4847A;
+        .package-option:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 30px rgba(67, 39, 31, 0.08);
         }
 
-        .btn-generate:disabled {
-          background: #9B948D;
+        .package-option.active {
+          border-color: rgba(167, 99, 86, 0.42);
+          box-shadow: 0 0 0 4px rgba(167, 99, 86, 0.07);
+          background: rgba(255, 248, 244, 0.9);
+        }
+
+        .package-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .package-name {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 25px;
+          font-weight: 600;
+        }
+
+        .package-price {
+          color: var(--create-accent-dark);
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .package-description {
+          margin: 7px 0 0;
+          color: var(--create-muted);
+          font-size: 12px;
+          line-height: 1.55;
+        }
+
+        .package-features {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+          margin-top: 12px;
+        }
+
+        .package-feature {
+          padding: 7px 9px;
+          border-radius: 999px;
+          background: rgba(167, 99, 86, 0.08);
+          color: var(--create-accent-dark);
+          font-size: 8px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .summary-box {
+          margin-top: 20px;
+          padding: 18px;
+          border-radius: 16px;
+          background: rgba(243, 236, 230, 0.72);
+          border: 1px solid rgba(92, 57, 47, 0.08);
+        }
+
+        .summary-label {
+          margin: 0 0 4px;
+          color: var(--create-soft);
+          font-size: 9px;
+          font-weight: 600;
+          letter-spacing: 0.13em;
+          text-transform: uppercase;
+        }
+
+        .summary-value {
+          margin: 0;
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 24px;
+          font-weight: 600;
+        }
+
+        .error-box {
+          margin-top: 16px;
+          padding: 12px 14px;
+          border: 1px solid rgba(171, 75, 65, 0.16);
+          border-radius: 12px;
+          background: rgba(171, 75, 65, 0.07);
+          color: #984b42;
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .create-button {
+          width: 100%;
+          margin-top: 20px;
+          border: 0;
+          border-radius: 999px;
+          padding: 15px 20px;
+          background: var(--create-ink);
+          color: #fffaf6;
+          cursor: pointer;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.15em;
+          text-transform: uppercase;
+          transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .create-button:hover:not(:disabled) {
+          transform: translateY(-1px);
+          background: var(--create-accent-dark);
+        }
+
+        .create-button:disabled {
+          opacity: 0.55;
           cursor: not-allowed;
         }
 
-        .footer-note {
-          text-align: center;
-          margin-top: 20px;
-          font-size: 11px;
-          color: #B8A8A0;
-          letter-spacing: 0.05em;
-        }
-
-        input[type="date"]::-webkit-calendar-picker-indicator {
-          opacity: 0.3;
-          cursor: pointer;
-          filter: sepia(1) hue-rotate(330deg);
-        }
-
-        @media (max-width: 520px) {
-          .card {
-            padding: 34px 24px 30px;
+        @media (max-width: 980px) {
+          .create-grid {
+            grid-template-columns: 1fr;
           }
 
-          .package-grid {
+          .intro-card {
+            position: relative;
+            top: auto;
+            min-height: auto;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .brand-text {
+            display: none;
+          }
+
+          .create-shell {
+            padding-top: 24px;
+          }
+
+          .intro-card,
+          .form-card {
+            border-radius: 20px;
+          }
+
+          .field-grid {
             grid-template-columns: 1fr;
+          }
+
+          .field.full {
+            grid-column: auto;
+          }
+
+          .package-heading {
+            align-items: flex-start;
+            flex-direction: column;
           }
         }
       `}</style>
 
-      <div className="page">
-        <svg
-          className="bg-botanical"
-          viewBox="0 0 1440 900"
-          xmlns="http://www.w3.org/2000/svg"
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <g opacity="0.12" fill="none" stroke="#B8965A" strokeWidth="1">
-            <path d="M -20 -10 Q 80 60 60 160" />
-            <path d="M 20 30 Q 110 80 100 200" />
-            <path d="M 60 10 Q 40 120 130 180" />
-            <ellipse cx="65" cy="155" rx="18" ry="9" transform="rotate(-30 65 155)" />
-            <ellipse cx="105" cy="195" rx="22" ry="10" transform="rotate(-50 105 195)" />
-            <ellipse cx="135" cy="175" rx="16" ry="7" transform="rotate(20 135 175)" />
-            <ellipse cx="30" cy="100" rx="14" ry="6" transform="rotate(-60 30 100)" />
-            <ellipse cx="80" cy="80" rx="12" ry="5" transform="rotate(40 80 80)" />
-            <circle cx="68" cy="45" r="4" />
-            <circle cx="72" cy="38" r="2" />
-            <circle cx="62" cy="38" r="2" />
-            <circle cx="75" cy="50" r="2" />
-            <circle cx="60" cy="50" r="2" />
-          </g>
+      <main className="create-page">
+        <header className="create-topbar">
+          <a href="/" className="brand-lockup">
+            <span className="brand-mark">W</span>
+            <span className="brand-text">Wedding Memories</span>
+          </a>
+        </header>
 
-          <g
-            opacity="0.10"
-            fill="none"
-            stroke="#C4847A"
-            strokeWidth="1"
-            transform="translate(1440, 900) rotate(180)"
-          >
-            <path d="M -20 -10 Q 80 60 60 160" />
-            <path d="M 20 30 Q 110 80 100 200" />
-            <path d="M 60 10 Q 40 120 130 180" />
-            <ellipse cx="65" cy="155" rx="18" ry="9" transform="rotate(-30 65 155)" />
-            <ellipse cx="105" cy="195" rx="22" ry="10" transform="rotate(-50 105 195)" />
-            <ellipse cx="135" cy="175" rx="16" ry="7" transform="rotate(20 135 175)" />
-            <ellipse cx="30" cy="100" rx="14" ry="6" transform="rotate(-60 30 100)" />
-            <ellipse cx="80" cy="80" rx="12" ry="5" transform="rotate(40 80 80)" />
-            <circle cx="68" cy="45" r="4" />
-            <circle cx="72" cy="38" r="2" />
-            <circle cx="62" cy="38" r="2" />
-            <circle cx="75" cy="50" r="2" />
-            <circle cx="60" cy="50" r="2" />
-          </g>
+        <div className="create-shell">
+          <div className="create-grid">
+            <section className="intro-card">
+              <div>
+                <p className="intro-kicker">Create your wedding experience</p>
 
-          <g
-            opacity="0.07"
-            fill="none"
-            stroke="#B8965A"
-            strokeWidth="0.8"
-            transform="translate(1380, 20)"
-          >
-            <circle cx="0" cy="0" r="30" />
-            <circle cx="0" cy="0" r="20" />
-            <circle cx="0" cy="0" r="10" />
-            <line x1="-35" y1="0" x2="35" y2="0" />
-            <line x1="0" y1="-35" x2="0" y2="35" />
-          </g>
-        </svg>
+                <h1 className="intro-title">
+                  One day,
+                  <em>every memory.</em>
+                </h1>
 
-        <div className="card-wrapper">
-          <div className="crest">
-            <p className="eyebrow">Wedding Gallery</p>
-
-            <div className="crest-ornament">
-              <span className="crest-line"></span>
-              <span className="crest-diamond"></span>
-              <span className="crest-line right"></span>
-            </div>
-
-            <h1 className="main-title">
-              Create Your<br />
-              <em>Wedding Event</em>
-            </h1>
-
-            <p className="subtitle">
-              Your memories, beautifully collected in one place
-            </p>
-          </div>
-
-          <div className="card">
-            <div className="field-group">
-              <div className="field">
-                <label className="field-label">Bride's Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sarah"
-                  value={brideName}
-                  onChange={(e) => setBrideName(e.target.value)}
-                />
+                <p className="intro-copy">
+                  Create a private wedding space where guests can share photos,
+                  videos and wishes through one simple QR code.
+                </p>
               </div>
 
-              <div className="ampersand-row">
-                <span className="amp-line"></span>
-                <span className="amp-char">&</span>
-                <span className="amp-line"></span>
+              <div className="intro-benefits">
+                <div className="benefit-row">
+                  <span className="benefit-icon">♡</span>
+                  <span>Private wedding gallery for every event</span>
+                </div>
+                <div className="benefit-row">
+                  <span className="benefit-icon">⌁</span>
+                  <span>Fast sharing through QR codes and direct links</span>
+                </div>
+                <div className="benefit-row">
+                  <span className="benefit-icon">✦</span>
+                  <span>Designed for mobile guests and modern weddings</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="form-card">
+              <div className="form-heading">
+                <p className="form-kicker">Wedding details</p>
+                <h2 className="form-title">Create a new event</h2>
+                <p className="form-subtitle">
+                  Add the couple&apos;s details and choose the package that best
+                  suits the celebration.
+                </p>
               </div>
 
-              <div className="field">
-                <label className="field-label">Groom's Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Daniel"
-                  value={groomName}
-                  onChange={(e) => setGroomName(e.target.value)}
-                />
+              <div className="field-grid">
+                <div className="field">
+                  <label className="field-label">Bride&apos;s name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sarah"
+                    value={brideName}
+                    onChange={(event) => setBrideName(event.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Groom&apos;s name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Daniel"
+                    value={groomName}
+                    onChange={(event) => setGroomName(event.target.value)}
+                  />
+                </div>
+
+                <div className="field full">
+                  <label className="field-label">Wedding date</label>
+                  <input
+                    type="date"
+                    value={eventDate}
+                    onChange={(event) => setEventDate(event.target.value)}
+                  />
+                </div>
               </div>
 
-              <div className="field">
-                <label className="field-label">Wedding Date</label>
-                <input
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                />
-              </div>
-
-              <div className="field">
-                <label className="field-label">Package Type</label>
+              <div className="package-section">
+                <div className="package-heading">
+                  <h2>Choose a package</h2>
+                  <p>Can be upgraded later</p>
+                </div>
 
                 <div className="package-grid">
-                  {(['BASIC', 'PREMIUM', 'VIP'] as PackageType[]).map((pkg) => (
+                  {packageOptions.map((option) => (
                     <button
-                      key={pkg}
+                      key={option.name}
                       type="button"
-                      onClick={() => setPackageType(pkg)}
-                      className={`package-btn ${
-                        packageType === pkg ? 'active' : ''
+                      className={`package-option ${
+                        packageType === option.name ? 'active' : ''
                       }`}
+                      onClick={() => setPackageType(option.name)}
                     >
-                      {pkg}
+                      <div className="package-top">
+                        <span className="package-name">{option.label}</span>
+                        <span className="package-price">{option.price}</span>
+                      </div>
+
+                      <p className="package-description">
+                        {option.description}
+                      </p>
+
+                      <div className="package-features">
+                        {option.features.map((feature) => (
+                          <span key={feature} className="package-feature">
+                            {feature}
+                          </span>
+                        ))}
+                      </div>
                     </button>
                   ))}
                 </div>
-
-                <p className="package-desc">{packageDescription}</p>
               </div>
-            </div>
 
-            <button
-              className="btn-generate"
-              onClick={handleGenerateEvent}
-              disabled={isCreating}
-            >
-              {isCreating ? 'Creating...' : 'Generate Your Gallery'}
-            </button>
+              <div className="summary-box">
+                <p className="summary-label">Selected package</p>
+                <p className="summary-value">
+                  {selectedPackage.label} · {selectedPackage.price}
+                </p>
+              </div>
+
+              {errorMessage && (
+                <div className="error-box">{errorMessage}</div>
+              )}
+
+              <button
+                type="button"
+                className="create-button"
+                onClick={handleGenerateEvent}
+                disabled={isCreating}
+              >
+                {isCreating ? 'Creating your event...' : 'Create wedding event'}
+              </button>
+            </section>
           </div>
-
-          <p className="footer-note">
-            A private gallery will be created for your guests
-          </p>
         </div>
-      </div>
+      </main>
     </>
   )
 }
