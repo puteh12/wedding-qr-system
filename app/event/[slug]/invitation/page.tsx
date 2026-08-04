@@ -47,7 +47,7 @@ export default function InvitationPage() {
     if (!event?.event_date) return
 
     const updateCountdown = () => {
-      const target = buildEventDate(event.event_date, event.event_time)
+      const target = buildEventDate(event.event_date!, event.event_time)
       const difference = target.getTime() - Date.now()
 
       if (difference <= 0) {
