@@ -11,6 +11,7 @@ type WeddingEvent = {
   groom_name: string
   event_date: string | null
   event_time: string | null
+  event_end_time: string | null
   venue_name: string | null
   venue_address: string | null
   google_maps_url: string | null
@@ -43,7 +44,7 @@ export default function RSVPPage() {
     const { data, error } = await supabase
       .from('events')
       .select(
-        'id, slug, bride_name, groom_name, event_date, event_time, venue_name, venue_address, google_maps_url, waze_url'
+        'id, slug, bride_name, groom_name, event_date, event_time, event_end_time, venue_name, venue_address, google_maps_url, waze_url'
       )
       .eq('slug', slug)
       .maybeSingle()
@@ -60,6 +61,26 @@ export default function RSVPPage() {
     }
 
     setEvent(data as WeddingEvent)
+  }
+
+  const formatTimeValue = (time?: string | null) => {
+    if (!time) return null
+
+    const match = time.match(/(\d{1,2})[:.](\d{2})(?:\s*([ap]m))?/i)
+
+    if (!match) return null
+
+    let hours = Number(match[1])
+    const minutes = Number(match[2])
+    const meridiem = match[3]?.toLowerCase()
+
+    if (meridiem === 'pm' && hours < 12) hours += 12
+    if (meridiem === 'am' && hours === 12) hours = 0
+
+    const displayHours = hours % 12 || 12
+    const displayMeridiem = hours >= 12 ? 'pm' : 'am'
+
+    return `${displayHours}.${String(minutes).padStart(2, '0')} ${displayMeridiem}`
   }
 
   async function handleSubmit(submitEvent: FormEvent<HTMLFormElement>) {
@@ -118,11 +139,16 @@ export default function RSVPPage() {
     : null
 
   const formattedTime = event?.event_time
-    ? new Intl.DateTimeFormat('en-MY', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      }).format(new Date(`1970-01-01T${event.event_time}`))
+    ? (() => {
+        const startTime = formatTimeValue(event.event_time)
+        const endTime = formatTimeValue(event.event_end_time)
+
+        if (startTime && endTime) {
+          return `${startTime} - ${endTime}`
+        }
+
+        return startTime || event.event_time
+      })()
     : null
 
   const hasVenue =

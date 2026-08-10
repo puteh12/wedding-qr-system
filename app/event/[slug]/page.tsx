@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import QrCodeBox from './QrCodeBox'
 
 type PackageType = 'BASIC' | 'PREMIUM' | 'VIP'
-type QrType = 'upload' | 'gallery'
+type QrType = 'upload' | 'gallery' | 'rsvp'
 
 type WeddingEvent = {
   id: number
@@ -38,6 +38,7 @@ export default function EventPage() {
 
   const uploadUrl = `${baseUrl}/event/${slug}/upload`
   const galleryUrl = `${baseUrl}/event/${slug}/gallery`
+  const rsvpUrl = `${baseUrl}/event/${slug}/rsvp`
 
   const fallbackBrideName = slug
     ? slug.split('-')[0].charAt(0).toUpperCase() + slug.split('-')[0].slice(1)
@@ -89,9 +90,18 @@ export default function EventPage() {
     }
   }, [packageType])
 
-  const zoomValue = qrZoomed === 'gallery' ? galleryUrl : uploadUrl
+  const zoomValue =
+    qrZoomed === 'gallery'
+      ? galleryUrl
+      : qrZoomed === 'rsvp'
+        ? rsvpUrl
+        : uploadUrl
   const zoomTitle =
-    qrZoomed === 'gallery' ? 'Couple Gallery QR' : 'Guest Upload QR'
+    qrZoomed === 'gallery'
+      ? 'Couple Gallery QR'
+      : qrZoomed === 'rsvp'
+        ? 'RSVP QR'
+        : 'Guest Upload QR'
 
   useEffect(() => {
     void fetchEventData()
@@ -907,8 +917,9 @@ export default function EventPage() {
                 </div>
 
                 <p className="section-copy">
-                  Use the guest QR for uploads and keep the gallery QR for the
-                  couple, family or selected guests.
+                  Use the guest QR for uploads, the RSVP QR for attendance,
+                  and keep the gallery QR for the couple, family or selected
+                  guests.
                 </p>
               </div>
 
@@ -945,6 +956,45 @@ export default function EventPage() {
                         type="button"
                         className="action-secondary"
                         onClick={() => setQrZoomed('upload')}
+                      >
+                        Enlarge QR
+                      </button>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="qr-card">
+                  <div
+                    className="qr-frame"
+                    onClick={() => setQrZoomed('rsvp')}
+                  >
+                    <QrCodeBox value={rsvpUrl} />
+                  </div>
+
+                  <div className="qr-content">
+                    <h3>RSVP</h3>
+                    <p>
+                      Guests scan this code to confirm attendance and submit
+                      their response.
+                    </p>
+
+                    <div className="qr-link-box">{rsvpUrl}</div>
+
+                    <div className="qr-actions">
+                      <a href={rsvpUrl} className="action-primary">
+                        Open RSVP
+                      </a>
+                      <button
+                        type="button"
+                        className="action-secondary"
+                        onClick={() => copyLink('rsvp')}
+                      >
+                        {copied === 'rsvp' ? 'Copied' : 'Copy link'}
+                      </button>
+                      <button
+                        type="button"
+                        className="action-secondary"
+                        onClick={() => setQrZoomed('rsvp')}
                       >
                         Enlarge QR
                       </button>

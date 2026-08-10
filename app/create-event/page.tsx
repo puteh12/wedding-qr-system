@@ -44,6 +44,8 @@ export default function CreateEventPage() {
   const [brideName, setBrideName] = useState('')
   const [groomName, setGroomName] = useState('')
   const [eventDate, setEventDate] = useState('')
+  const [eventStartTime, setEventStartTime] = useState('')
+  const [eventEndTime, setEventEndTime] = useState('')
   const [packageType, setPackageType] = useState<PackageType>('BASIC')
   const [isCreating, setIsCreating] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -65,8 +67,19 @@ export default function CreateEventPage() {
   const handleGenerateEvent = async () => {
     setErrorMessage('')
 
-    if (!brideName.trim() || !groomName.trim() || !eventDate) {
+    if (
+      !brideName.trim() ||
+      !groomName.trim() ||
+      !eventDate ||
+      !eventStartTime ||
+      !eventEndTime
+    ) {
       setErrorMessage('Please complete all wedding details before continuing.')
+      return
+    }
+
+    if (eventEndTime <= eventStartTime) {
+      setErrorMessage('End time must be later than start time.')
       return
     }
 
@@ -86,14 +99,15 @@ export default function CreateEventPage() {
       }
 
       if (existingEvent) {
-        setErrorMessage(
-          'An event with these names already exists. Please use a slightly different name.'
-        )
+        router.push(`/event/${slug}`)
         return
       }
 
       const { error } = await supabase.from('events').insert({
         slug,
+        event_date: eventDate,
+        event_time: eventStartTime,
+        event_end_time: eventEndTime,
         bride_name: brideName.trim(),
         groom_name: groomName.trim(),
         package_type: packageType,
@@ -658,6 +672,24 @@ export default function CreateEventPage() {
                     type="date"
                     value={eventDate}
                     onChange={(event) => setEventDate(event.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Start time</label>
+                  <input
+                    type="time"
+                    value={eventStartTime}
+                    onChange={(event) => setEventStartTime(event.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="field-label">End time</label>
+                  <input
+                    type="time"
+                    value={eventEndTime}
+                    onChange={(event) => setEventEndTime(event.target.value)}
                   />
                 </div>
               </div>

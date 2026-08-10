@@ -11,6 +11,7 @@ type WeddingEvent = {
   groom_name: string
   event_date: string | null
   event_time: string | null
+  event_end_time: string | null
   venue_name: string | null
   venue_address: string | null
   google_maps_url: string | null
@@ -76,7 +77,7 @@ export default function InvitationPage() {
     const { data, error } = await supabase
       .from('events')
       .select(
-        'id, slug, bride_name, groom_name, event_date, event_time, venue_name, venue_address, google_maps_url, waze_url'
+        'id, slug, bride_name, groom_name, event_date, event_time, event_end_time, venue_name, venue_address, google_maps_url, waze_url'
       )
       .eq('slug', slug)
       .maybeSingle()
@@ -98,8 +99,39 @@ export default function InvitationPage() {
     setLoading(false)
   }
 
+  const extractTimeParts = (time?: string | null) => {
+    if (!time) return null
+
+    const match = time.match(/(\d{1,2})[:.](\d{2})(?:\s*([ap]m))?/i)
+
+    if (!match) return null
+
+    let hours = Number(match[1])
+    const minutes = Number(match[2])
+    const meridiem = match[3]?.toLowerCase()
+
+    if (meridiem === 'pm' && hours < 12) hours += 12
+    if (meridiem === 'am' && hours === 12) hours = 0
+
+    return { hours, minutes }
+  }
+
+  const formatTimeValue = (time?: string | null) => {
+    const timeParts = extractTimeParts(time)
+
+    if (!timeParts) return null
+
+    const displayHours = timeParts.hours % 12 || 12
+    const displayMeridiem = timeParts.hours >= 12 ? 'pm' : 'am'
+
+    return `${displayHours}.${String(timeParts.minutes).padStart(2, '0')} ${displayMeridiem}`
+  }
+
   const buildEventDate = (date: string, time?: string | null) => {
-    const safeTime = time ? time.slice(0, 5) : '00:00'
+    const timeParts = extractTimeParts(time)
+    const safeTime = timeParts
+      ? `${String(timeParts.hours).padStart(2, '0')}:${String(timeParts.minutes).padStart(2, '0')}`
+      : '00:00'
     return new Date(`${date}T${safeTime}:00`)
   }
 
@@ -117,15 +149,15 @@ export default function InvitationPage() {
   const formattedTime = useMemo(() => {
     if (!event?.event_time) return 'Time to be confirmed'
 
-    const [hour, minute] = event.event_time.split(':')
-    const date = new Date()
-    date.setHours(Number(hour), Number(minute), 0, 0)
+    const startTime = formatTimeValue(event.event_time)
+    const endTime = formatTimeValue(event.event_end_time)
 
-    return new Intl.DateTimeFormat('en-MY', {
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
-  }, [event?.event_time])
+    if (startTime && endTime) {
+      return `${startTime} - ${endTime}`
+    }
+
+    return startTime || event.event_time
+  }, [event?.event_end_time, event?.event_time])
 
   const brideName = event?.bride_name || 'Bride'
   const groomName = event?.groom_name || 'Groom'
